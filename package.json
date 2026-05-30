@@ -1,0 +1,29 @@
+{
+  "name": "bartender",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bartender — plataforma SaaS realtime para bares, restaurantes y discotecas.",
+  "scripts": {
+    "prepare": "husky || true",
+    "dev:backend": "npm --prefix backend run start:dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:backend": "npm --prefix backend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "lint": "npm --prefix backend run lint && npm --prefix frontend run lint",
+    "seed": "npm --prefix backend run seed",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down"
+  },
+  "lint-staged": {
+    "backend/**/*.ts": [
+      "prettier --write"
+    ],
+    "frontend/**/*.{ts,vue,css}": [
+      "prettier --write"
+    ]
+  },
+  "devDependencies": {
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10"
+  }
+}

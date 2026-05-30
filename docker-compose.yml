@@ -1,0 +1,82 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: bartender-mongo
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: ${MONGO_INITDB_DATABASE:-bartender}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - bartender
+
+  redis:
+    image: redis:7-alpine
+    container_name: bartender-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - bartender
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bartender-backend
+    restart: unless-stopped
+    depends_on:
+      - mongo
+      - redis
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      BACKEND_PORT: ${BACKEND_PORT:-3000}
+      API_PREFIX: ${API_PREFIX:-api}
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017/bartender}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-super_secret_access_change_me}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-super_secret_refresh_change_me}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      RATE_LIMIT_TTL: ${RATE_LIMIT_TTL:-60}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
+      QR_BASE_URL: ${QR_BASE_URL:-http://localhost:5173}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    networks:
+      - bartender
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Vacíos: el frontend usa el mismo origen y nginx proxya /api y /socket.io al backend.
+        VITE_API_URL: ""
+        VITE_SOCKET_URL: ""
+        VITE_YOUTUBE_API_KEY: ${VITE_YOUTUBE_API_KEY:-}
+    container_name: bartender-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+    networks:
+      - bartender
+
+volumes:
+  mongo_data:
+  redis_data:
+
+networks:
+  bartender:
+    driver: bridge
