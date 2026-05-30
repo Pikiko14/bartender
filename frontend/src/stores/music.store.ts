@@ -1,7 +1,19 @@
 import { defineStore } from 'pinia';
-import { musicApi } from '@/services/api';
-import { realtime, SocketEvents } from '@/socket/socket';
+import { musicApi, publicApi } from '@/services/api';
+import { realtime, SocketEvents, type PlaybackSyncPayload } from '@/socket/socket';
+import { dispatchPlaybackSync } from '@/shared/playback-sync';
+import { broadcastNowPlaying } from '@/shared/music-sync-bus';
 import type { MusicQueue, MusicRequest } from '@/shared/types';
+
+let playbackRelayReady = false;
+
+function ensurePlaybackRelay() {
+  if (playbackRelayReady) return;
+  playbackRelayReady = true;
+  realtime.on<PlaybackSyncPayload>(SocketEvents.MUSIC_PLAYBACK_CONTROL, (cmd) => {
+    dispatchPlaybackSync(cmd);
+  });
+}
 
 export const useMusicStore = defineStore('music', {
   state: () => ({
@@ -15,6 +27,10 @@ export const useMusicStore = defineStore('music', {
       const q = await musicApi.queue();
       this.applyQueue(q);
     },
+    async fetchPublicQueue(businessSlug: string) {
+      const q = await publicApi.publicQueue(businessSlug);
+      this.applyQueue({ ...q, pending: [] });
+    },
     applyQueue(q: MusicQueue) {
       this.nowPlaying = q.nowPlaying;
       this.queue = q.queue;
@@ -27,16 +43,30 @@ export const useMusicStore = defineStore('music', {
       await musicApi.reject(id);
     },
     async playNext() {
-      await musicApi.playNext();
+      const playing = await musicApi.playNext();
+      this.nowPlaying = playing;
+      await this.fetchQueue();
     },
     async skip() {
-      await musicApi.skip();
+      const playing = await musicApi.skip();
+      this.nowPlaying = playing;
+      await this.fetchQueue();
+    },
+    async playRequest(id: string) {
+      const playing = await musicApi.playRequest(id);
+      this.nowPlaying = playing;
+      await this.fetchQueue();
+    },
+
+    sendPlaybackControl(businessId: string, cmd: PlaybackSyncPayload) {
+      realtime.emitPlaybackControl(businessId, cmd);
     },
 
     bindBusiness(businessId: string) {
+      ensurePlaybackRelay();
+      realtime.joinBusiness(businessId);
       if (this.bound) return;
       this.bound = true;
-      realtime.joinBusiness(businessId);
 
       realtime.on<MusicRequest>(SocketEvents.MUSIC_REQUESTED, (req) => {
         if (!this.pending.find((p) => p.id === req.id)) this.pending.unshift(req);
@@ -45,6 +75,10 @@ export const useMusicStore = defineStore('music', {
       realtime.on<MusicRequest | null>(SocketEvents.MUSIC_PLAYING, (req) => {
         this.nowPlaying = req;
       });
+    },
+
+    notifyPlayback(businessId: string) {
+      broadcastNowPlaying(businessId, this.nowPlaying);
     },
   },
 });

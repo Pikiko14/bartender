@@ -15,11 +15,10 @@
             <option value="postres">Postres</option>
             <option value="promociones">Promociones</option>
           </select>
-          <input
+          <ImageUpload
             v-model="catForm.image"
-            type="url"
-            class="input"
-            placeholder="URL imagen (opcional)"
+            :fallback-icon="categoryIcon(catForm.type)"
+            alt="Imagen categoría"
           />
           <button class="btn-primary w-full text-sm">Añadir categoría</button>
         </form>
@@ -44,13 +43,12 @@
                 ✕
               </button>
             </div>
-            <div class="mt-2 flex gap-2">
-              <input
-                :value="c.image ?? ''"
-                type="url"
-                class="input py-1.5 text-xs"
-                placeholder="URL imagen…"
-                @change="updateCategoryImage(c.id, ($event.target as HTMLInputElement).value)"
+            <div class="mt-2">
+              <ImageUpload
+                :model-value="c.image"
+                :fallback-icon="categoryIcon(c.type)"
+                :alt="c.name"
+                @update:model-value="updateCategoryImage(c.id, $event)"
               />
             </div>
           </li>
@@ -79,12 +77,9 @@
             <option value="KITCHEN">Cocina</option>
             <option value="BAR">Barra</option>
           </select>
-          <input
-            v-model="itemForm.image"
-            type="url"
-            class="input sm:col-span-2"
-            placeholder="URL imagen (opcional)"
-          />
+          <div class="sm:col-span-2">
+            <ImageUpload v-model="itemForm.image" :alt="itemForm.name || 'Producto'" />
+          </div>
           <input
             v-model="itemForm.description"
             class="input sm:col-span-2"
@@ -127,13 +122,13 @@
                 </button>
               </div>
             </div>
-            <input
-              :value="it.image ?? ''"
-              type="url"
-              class="input mt-2 py-1.5 text-xs"
-              placeholder="URL imagen…"
-              @change="updateItemImage(it.id, ($event.target as HTMLInputElement).value)"
-            />
+            <div class="mt-2">
+              <ImageUpload
+                :model-value="it.image"
+                :alt="it.name"
+                @update:model-value="updateItemImage(it.id, $event)"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -143,6 +138,7 @@
 
 <script setup lang="ts">
 import { onMounted, reactive } from 'vue';
+import ImageUpload from '@/components/ImageUpload.vue';
 import MenuImage from '@/components/MenuImage.vue';
 import { useMenuStore } from '@/stores/menu.store';
 import { formatMoney } from '@/shared/format';
@@ -153,14 +149,14 @@ import { useToast } from '@/composables/useToast';
 const menu = useMenuStore();
 const toast = useToast();
 
-const catForm = reactive({ name: '', type: 'bebidas', image: '' });
+const catForm = reactive({ name: '', type: 'bebidas', image: null as string | null });
 const itemForm = reactive({
   name: '',
   price: 0,
   categoryId: '',
   preparationArea: 'BAR' as 'BAR' | 'KITCHEN',
   description: '',
-  image: '',
+  image: null as string | null,
 });
 
 async function addCategory() {
@@ -171,16 +167,16 @@ async function addCategory() {
       image: catForm.image || undefined,
     });
     catForm.name = '';
-    catForm.image = '';
+    catForm.image = null;
     toast.success('Categoría creada.');
   } catch (e) {
     toast.error(apiErrorMessage(e));
   }
 }
 
-async function updateCategoryImage(id: string, image: string) {
+async function updateCategoryImage(id: string, image: string | null) {
   try {
-    await menu.updateCategory(id, { image: image || null });
+    await menu.updateCategory(id, { image });
     toast.success('Imagen de categoría actualizada.');
   } catch (e) {
     toast.error(apiErrorMessage(e));
@@ -204,16 +200,16 @@ async function addItem() {
     itemForm.name = '';
     itemForm.price = 0;
     itemForm.description = '';
-    itemForm.image = '';
+    itemForm.image = null;
     toast.success('Producto creado.');
   } catch (e) {
     toast.error(apiErrorMessage(e));
   }
 }
 
-async function updateItemImage(id: string, image: string) {
+async function updateItemImage(id: string, image: string | null) {
   try {
-    await menu.updateItem(id, { image: image || null });
+    await menu.updateItem(id, { image });
     toast.success('Imagen del producto actualizada.');
   } catch (e) {
     toast.error(apiErrorMessage(e));

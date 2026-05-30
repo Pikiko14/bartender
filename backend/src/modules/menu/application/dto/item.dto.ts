@@ -7,10 +7,10 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUrl,
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { PreparationArea } from '@shared/enums';
 
@@ -34,7 +34,8 @@ export class CreateItemDto {
   price!: number;
 
   @IsOptional()
-  @IsUrl()
+  @IsString()
+  @MaxLength(512)
   image?: string;
 
   @IsOptional()
@@ -70,8 +71,10 @@ export class UpdateItemDto {
   price?: number;
 
   @IsOptional()
-  @IsUrl()
-  image?: string;
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(512)
+  image?: string | null;
 
   @IsOptional()
   @Type(() => Number)

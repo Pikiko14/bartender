@@ -36,6 +36,11 @@ export interface YoutubeConfig {
   apiKey: string;
 }
 
+export interface UploadsConfig {
+  dir: string;
+  maxFileSize: number;
+}
+
 export interface Configuration {
   app: AppConfig;
   mongo: MongoConfig;
@@ -44,6 +49,7 @@ export interface Configuration {
   security: SecurityConfig;
   qr: QrConfig;
   youtube: YoutubeConfig;
+  uploads: UploadsConfig;
 }
 
 export default (): Configuration => ({
@@ -80,5 +86,9 @@ export default (): Configuration => ({
   },
   youtube: {
     apiKey: process.env.YOUTUBE_API_KEY ?? '',
+  },
+  uploads: {
+    dir: process.env.UPLOAD_DIR ?? 'uploads',
+    maxFileSize: parseInt(process.env.UPLOAD_MAX_FILE_SIZE ?? String(5 * 1024 * 1024), 10),
   },
 });

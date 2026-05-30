@@ -4,8 +4,8 @@
     :class="sizeClass"
   >
     <img
-      v-if="src && !failed"
-      :src="src"
+      v-if="resolvedSrc && !failed"
+      :src="resolvedSrc"
       :alt="alt"
       class="h-full w-full object-cover"
       loading="lazy"
@@ -22,6 +22,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { resolveMediaUrl } from '@/shared/media-url';
 
 const props = withDefaults(
   defineProps<{
@@ -38,6 +39,8 @@ const props = withDefaults(
 );
 
 const failed = ref(false);
+
+const resolvedSrc = computed(() => resolveMediaUrl(props.src));
 
 watch(
   () => props.src,

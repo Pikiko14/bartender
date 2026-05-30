@@ -37,3 +37,7 @@ Thumbs.db
 .cache/
 .pnpm-store/
 *.local
+
+# Uploaded files
+uploads/
+backend/uploads/

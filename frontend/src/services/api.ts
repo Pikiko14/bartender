@@ -72,6 +72,18 @@ export const menuApi = {
   removeItem: (id: string) => http.delete(`/menu/items/${id}`),
 };
 
+export const uploadsApi = {
+  menuImage: async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return unwrap<{ url: string }>(
+      http.post('/uploads/menu', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }),
+    );
+  },
+};
+
 // ---- Orders (staff) ----
 export const ordersApi = {
   list: (status?: OrderStatus) =>
@@ -91,6 +103,7 @@ export const musicApi = {
     unwrap<MusicRequest>(http.patch(`/music/requests/${id}/priority`, { priority })),
   playNext: () => unwrap<MusicRequest | null>(http.post('/music/play-next', {})),
   skip: () => unwrap<MusicRequest | null>(http.post('/music/skip', {})),
+  playRequest: (id: string) => unwrap<MusicRequest>(http.post(`/music/requests/${id}/play`, {})),
 };
 
 // ---- Analytics ----

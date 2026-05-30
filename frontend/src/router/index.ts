@@ -66,6 +66,12 @@ const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/b/:businessSlug/dj',
+    name: 'dj-shared',
+    component: () => import('@/pages/displays/DjDisplay.vue'),
+    meta: { sharedDisplay: true },
+  },
+  {
     path: '/dj',
     name: 'dj',
     component: () => import('@/pages/displays/DjDisplay.vue'),

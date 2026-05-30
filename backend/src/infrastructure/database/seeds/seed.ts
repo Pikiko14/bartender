@@ -138,34 +138,34 @@ async function run(): Promise<void> {
   }
 
   // --- Menú ---
-  const catData: Array<[string, MenuCategoryType, string]> = [
-    ['Cócteles', MenuCategoryType.BEBIDAS, 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7b88?w=800&q=80'],
-    ['Cervezas', MenuCategoryType.BEBIDAS, 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=800&q=80'],
-    ['Para picar', MenuCategoryType.COMIDA, 'https://images.unsplash.com/photo-1550547660-9459482d5a67?w=800&q=80'],
-    ['Postres', MenuCategoryType.POSTRES, 'https://images.unsplash.com/photo-1551024506-0bccd828d307?w=800&q=80'],
+  const catData: Array<[string, MenuCategoryType]> = [
+    ['Cócteles', MenuCategoryType.BEBIDAS],
+    ['Cervezas', MenuCategoryType.BEBIDAS],
+    ['Para picar', MenuCategoryType.COMIDA],
+    ['Postres', MenuCategoryType.POSTRES],
   ];
   const catIds: Record<string, string> = {};
   let order = 0;
-  for (const [name, type, image] of catData) {
+  for (const [name, type] of catData) {
     const cat = await categories.create(
-      new MenuCategory({ id: uuid(), businessId, name, type, order: order++, active: true, image }),
+      new MenuCategory({ id: uuid(), businessId, name, type, order: order++, active: true, image: null }),
     );
     catIds[name] = cat.id;
   }
 
-  const itemData: Array<[string, string, number, PreparationArea, string, string]> = [
-    ['Mojito', 'Cócteles', 8.5, PreparationArea.BAR, 'Ron, lima, menta y soda.', 'https://images.unsplash.com/photo-1551538827-9c037cb70832?w=400&q=80'],
-    ['Negroni', 'Cócteles', 9.0, PreparationArea.BAR, 'Gin, Campari y vermut rojo.', 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7b88?w=400&q=80'],
-    ['Gin Tonic Premium', 'Cócteles', 10.0, PreparationArea.BAR, 'Gin premium y tónica artesanal.', 'https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=400&q=80'],
-    ['IPA Artesanal', 'Cervezas', 5.0, PreparationArea.BAR, 'Cerveza IPA local de barril.', 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=400&q=80'],
-    ['Rubia 33cl', 'Cervezas', 3.5, PreparationArea.BAR, 'Cerveza rubia bien fría.', 'https://images.unsplash.com/photo-1434644573012-3ceab86a3b48?w=400&q=80'],
-    ['Patatas Bravas', 'Para picar', 6.5, PreparationArea.KITCHEN, 'Con salsa brava y alioli.', 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=400&q=80'],
-    ['Croquetas de Jamón', 'Para picar', 7.0, PreparationArea.KITCHEN, 'Seis unidades caseras.', 'https://images.unsplash.com/photo-1601050690597-df0568f70946?w=400&q=80'],
-    ['Burger Bartender', 'Para picar', 11.5, PreparationArea.KITCHEN, 'Doble carne, cheddar y bacon.', 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=400&q=80'],
-    ['Coulant de Chocolate', 'Postres', 6.0, PreparationArea.KITCHEN, 'Con helado de vainilla.', 'https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&q=80'],
-    ['Tarta de Queso', 'Postres', 5.5, PreparationArea.KITCHEN, 'Estilo horno, cremosa.', 'https://images.unsplash.com/photo-1524351199678-941a58a4df10?w=400&q=80'],
+  const itemData: Array<[string, string, number, PreparationArea, string]> = [
+    ['Mojito', 'Cócteles', 8.5, PreparationArea.BAR, 'Ron, lima, menta y soda.'],
+    ['Negroni', 'Cócteles', 9.0, PreparationArea.BAR, 'Gin, Campari y vermut rojo.'],
+    ['Gin Tonic Premium', 'Cócteles', 10.0, PreparationArea.BAR, 'Gin premium y tónica artesanal.'],
+    ['IPA Artesanal', 'Cervezas', 5.0, PreparationArea.BAR, 'Cerveza IPA local de barril.'],
+    ['Rubia 33cl', 'Cervezas', 3.5, PreparationArea.BAR, 'Cerveza rubia bien fría.'],
+    ['Patatas Bravas', 'Para picar', 6.5, PreparationArea.KITCHEN, 'Con salsa brava y alioli.'],
+    ['Croquetas de Jamón', 'Para picar', 7.0, PreparationArea.KITCHEN, 'Seis unidades caseras.'],
+    ['Burger Bartender', 'Para picar', 11.5, PreparationArea.KITCHEN, 'Doble carne, cheddar y bacon.'],
+    ['Coulant de Chocolate', 'Postres', 6.0, PreparationArea.KITCHEN, 'Con helado de vainilla.'],
+    ['Tarta de Queso', 'Postres', 5.5, PreparationArea.KITCHEN, 'Estilo horno, cremosa.'],
   ];
-  for (const [name, catName, price, area, description, image] of itemData) {
+  for (const [name, catName, price, area, description] of itemData) {
     await items.create(
       new MenuItem({
         id: uuid(),
@@ -174,7 +174,7 @@ async function run(): Promise<void> {
         name,
         description,
         price,
-        image,
+        image: null,
         stock: null,
         available: true,
         preparationArea: area,

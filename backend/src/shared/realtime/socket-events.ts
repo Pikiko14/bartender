@@ -10,6 +10,9 @@ export const SocketEvents = {
   MUSIC_PLAYING: 'music.playing',
   MUSIC_SKIPPED: 'music.skipped',
   MUSIC_QUEUE_UPDATED: 'music.queue.updated',
+  MUSIC_SHARE_SIGNAL: 'music.share.signal',
+  MUSIC_SHARE_VIEWER_READY: 'music.share.viewer-ready',
+  MUSIC_PLAYBACK_CONTROL: 'music.playback.control',
   TABLE_UPDATED: 'table.updated',
 } as const;
 
@@ -20,5 +23,6 @@ export const SocketRooms = {
   business: (businessId: string) => `business:${businessId}`,
   kitchen: (businessId: string) => `kitchen:${businessId}`,
   bar: (businessId: string) => `bar:${businessId}`,
+  djCast: (businessId: string) => `dj-cast:${businessId}`,
   table: (tableId: string) => `table:${tableId}`,
 };

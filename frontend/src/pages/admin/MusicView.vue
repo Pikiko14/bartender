@@ -1,39 +1,83 @@
 <template>
   <div>
-    <h1 class="text-2xl font-bold">Música</h1>
-    <p class="text-sm text-slate-400">Modera peticiones · reproductor dual sin cortes.</p>
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-bold">Música</h1>
+        <p class="text-sm text-slate-400">Aprueba peticiones y gestiona la cola · el audio suena en la pantalla DJ.</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <a
+          v-if="tvShareUrl"
+          :href="tvShareUrl"
+          target="_blank"
+          class="btn-ghost text-sm text-neon-cyan"
+        >
+          📺 Modo TV
+        </a>
+        <a
+          v-if="shareUrl"
+          :href="shareUrl"
+          target="_blank"
+          class="btn-ghost text-sm text-neon-cyan"
+        >
+          ↗ Pantalla DJ
+        </a>
+        <a v-else href="/dj" target="_blank" class="btn-ghost text-sm text-neon-cyan">
+          ↗ Pantalla DJ
+        </a>
+      </div>
+    </div>
 
     <div class="mt-6 grid gap-6 lg:grid-cols-3">
       <div class="card p-5 lg:col-span-2">
-        <div class="flex items-center justify-between">
-          <h2 class="font-semibold">Reproduciendo ahora</h2>
-          <a href="/dj" target="_blank" class="text-xs text-neon-cyan hover:underline">↗ Pantalla DJ</a>
-        </div>
+        <h2 class="font-semibold">Cola aprobada</h2>
 
-        <div v-if="currentTrack" class="mt-4">
-          <YoutubeDualPlayer
-            ref="playerRef"
-            :current-track="currentTrack"
-            :next-track="nextTrack"
-            @need-sync="syncWithBackend"
-            @playing="onPlayerPlaying"
-            @error="onTrackError"
-          />
-          <p class="mt-3 font-semibold">{{ displayTitle }}</p>
-          <p v-if="nextTrack" class="mt-1 text-xs text-slate-500">
-            Siguiente: {{ nextTrack.title }}
-          </p>
-          <div class="mt-4 flex gap-2">
-            <button class="btn-cyan text-sm" @click="skip">⏭ Saltar</button>
-            <button class="btn-ghost text-sm" @click="playNext">▶ Siguiente (API)</button>
+        <div
+          v-if="music.nowPlaying"
+          class="mt-3 overflow-hidden rounded-lg ring-1 ring-neon-cyan/30"
+        >
+          <div class="flex items-center gap-3 bg-neon-cyan/5 p-3">
+            <img
+              :src="music.nowPlaying.thumbnail ?? ''"
+              class="h-12 w-20 shrink-0 rounded object-cover"
+              alt=""
+            />
+            <div class="min-w-0 flex-1">
+              <p class="text-xs font-medium uppercase tracking-wide text-neon-cyan">Sonando ahora</p>
+              <p class="truncate text-sm font-semibold">{{ music.nowPlaying.title }}</p>
+              <p v-if="music.queue[0]" class="mt-0.5 truncate text-xs text-slate-400">
+                Después: {{ music.queue[0].title }}
+              </p>
+            </div>
+          </div>
+          <div class="flex flex-wrap gap-2 border-t border-neon-cyan/20 bg-ink-900/50 p-3">
+            <button
+              type="button"
+              class="btn-cyan text-sm"
+              @click="togglePlayback"
+            >
+              {{ isPlaying ? '⏸ Pausar' : '▶ Reproducir' }}
+            </button>
+            <button type="button" class="btn-ghost text-sm" @click="skipTrack">⏭ Saltar</button>
+            <button
+              type="button"
+              class="btn-ghost text-sm"
+              :disabled="!music.queue.length"
+              @click="nextTrack"
+            >
+              ▶ Siguiente
+            </button>
           </div>
         </div>
-        <div v-else class="mt-4 flex flex-col items-center gap-3 py-10 text-center text-slate-500">
-          <p>No hay nada sonando.</p>
-          <button class="btn-primary text-sm" @click="playNext">▶ Reproducir cola</button>
+
+        <div
+          v-else-if="music.queue.length"
+          class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-ink-800 p-3"
+        >
+          <p class="text-sm text-slate-400">Cola lista · nada sonando aún.</p>
+          <button type="button" class="btn-primary text-sm" @click="nextTrack">▶ Iniciar cola</button>
         </div>
 
-        <h3 class="mt-8 font-semibold">Cola aprobada ({{ music.queue.length }})</h3>
         <ul class="mt-3 space-y-2">
           <li
             v-for="(s, i) in music.queue"
@@ -41,12 +85,24 @@
             class="flex items-center gap-3 rounded-lg bg-ink-800 p-2"
             :class="i === 0 ? 'ring-1 ring-neon-cyan/40' : ''"
           >
-            <img :src="s.thumbnail ?? ''" class="h-10 w-16 rounded object-cover" alt="" />
+            <img :src="s.thumbnail ?? ''" class="h-10 w-16 shrink-0 rounded object-cover" alt="" />
             <span class="flex-1 truncate text-sm">{{ s.title }}</span>
-            <span v-if="i === 0" class="badge bg-neon-cyan/20 text-neon-cyan">Siguiente</span>
             <span class="badge bg-ink-700 text-slate-400">▲ {{ s.votes }}</span>
+            <button
+              type="button"
+              class="btn-cyan shrink-0 px-2 py-1 text-xs"
+              :disabled="playingId === s.id"
+              @click="playNow(s.id)"
+            >
+              {{ playingId === s.id ? '…' : '▶ Ahora' }}
+            </button>
           </li>
-          <li v-if="!music.queue.length" class="text-sm text-slate-500">Cola vacía.</li>
+          <li
+            v-if="!music.nowPlaying && !music.queue.length"
+            class="py-8 text-center text-sm text-slate-500"
+          >
+            Cola vacía · aprueba peticiones o abre la pantalla DJ para iniciar.
+          </li>
         </ul>
       </div>
 
@@ -73,69 +129,86 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import YoutubeDualPlayer from '@/components/YoutubeDualPlayer.vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useMusicStore } from '@/stores/music.store';
 import { useAuthStore } from '@/stores/auth.store';
+import { useBusinessStore } from '@/stores/business.store';
 import { apiErrorMessage } from '@/services/http';
 import { useToast } from '@/composables/useToast';
-import type { YoutubePlayerTrack } from '@/shared/youtube.types';
-import type { MusicRequest } from '@/shared/types';
+import { djShareUrl, djTvUrl } from '@/shared/dj-share';
+import { onPlaybackSync } from '@/shared/playback-sync';
 
 const music = useMusicStore();
 const auth = useAuthStore();
+const business = useBusinessStore();
 const toast = useToast();
-const playerRef = ref<InstanceType<typeof YoutubeDualPlayer> | null>(null);
-const syncing = ref(false);
-const liveTrack = ref<YoutubePlayerTrack | null>(null);
+const playingId = ref<string | null>(null);
+const isPlaying = ref(true);
+const busy = ref(false);
+let unregPlaybackSync: (() => void) | undefined;
 
-function toTrack(req: MusicRequest | null): YoutubePlayerTrack | null {
-  if (!req) return null;
-  return { id: req.id, youtubeId: req.youtubeId, title: req.title };
+const businessSlug = computed(() => business.current?.slug ?? '');
+const shareUrl = computed(() => (businessSlug.value ? djShareUrl(businessSlug.value) : ''));
+const tvShareUrl = computed(() => (businessSlug.value ? djTvUrl(businessSlug.value) : ''));
+
+function togglePlayback() {
+  const businessId = auth.user?.businessId;
+  const track = music.nowPlaying;
+  if (!businessId || !track) return;
+  const action = isPlaying.value ? 'pause' : 'play';
+  music.sendPlaybackControl(businessId, { action, youtubeId: track.youtubeId });
+  isPlaying.value = action === 'play';
 }
 
-const currentTrack = computed(() => toTrack(music.nowPlaying));
-const nextTrack = computed(() => toTrack(music.queue[0] ?? null));
-const displayTitle = computed(
-  () => liveTrack.value?.title ?? music.nowPlaying?.title ?? '',
+watch(
+  () => music.nowPlaying?.id,
+  () => {
+    isPlaying.value = true;
+  },
 );
 
-function onPlayerPlaying(track: YoutubePlayerTrack) {
-  liveTrack.value = track;
-}
-
-async function syncWithBackend() {
-  if (syncing.value) return;
-  syncing.value = true;
+async function skipTrack() {
+  if (busy.value) return;
+  busy.value = true;
   try {
-    await music.playNext();
-    liveTrack.value = toTrack(music.nowPlaying);
+    await music.skip();
+    notifyDjPlayback();
   } catch (e) {
     toast.error(apiErrorMessage(e));
   } finally {
-    syncing.value = false;
+    busy.value = false;
   }
 }
 
-function onTrackError(_track: YoutubePlayerTrack, code: number) {
-  toast.error(`Error en video (${code}). Saltando…`);
-  void syncWithBackend();
-}
-
-async function skip() {
-  try {
-    playerRef.value?.forceSkip();
-    await music.skip();
-  } catch (e) {
-    toast.error(apiErrorMessage(e));
-  }
-}
-
-async function playNext() {
+async function nextTrack() {
+  if (busy.value) return;
+  busy.value = true;
   try {
     await music.playNext();
+    notifyDjPlayback();
   } catch (e) {
     toast.error(apiErrorMessage(e));
+  } finally {
+    busy.value = false;
+  }
+}
+
+function notifyDjPlayback() {
+  const businessId = auth.user?.businessId;
+  if (businessId) music.notifyPlayback(businessId);
+}
+
+async function playNow(id: string) {
+  if (music.nowPlaying?.id === id) return;
+  playingId.value = id;
+  try {
+    await music.playRequest(id);
+    notifyDjPlayback();
+    toast.success('Reproduciendo en pantalla DJ.');
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
+  } finally {
+    playingId.value = null;
   }
 }
 
@@ -156,10 +229,20 @@ async function reject(id: string) {
 }
 
 onMounted(async () => {
+  if (auth.hasRole('OWNER')) {
+    await business.fetchMine().catch(() => undefined);
+  }
   if (auth.user?.businessId) music.bindBusiness(auth.user.businessId);
   await music.fetchQueue().catch((e) => toast.error(apiErrorMessage(e)));
-  if (!music.nowPlaying && music.queue.length) {
-    await playNext();
-  }
+
+  unregPlaybackSync = onPlaybackSync((cmd) => {
+    if (music.nowPlaying?.youtubeId === cmd.youtubeId) {
+      isPlaying.value = cmd.action === 'play';
+    }
+  });
+});
+
+onBeforeUnmount(() => {
+  unregPlaybackSync?.();
 });
 </script>

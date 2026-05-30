@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { BusinessRuleViolationException } from '@core/domain/exceptions';
+import { BusinessRuleViolationException, EntityNotFoundException, ForbiddenDomainException } from '@core/domain/exceptions';
 import { MusicRequestStatus } from '../../domain/entities/music-request.entity';
 import { SocketEvents } from '@shared/realtime/socket-events';
 import { RealtimeService } from '@infrastructure/realtime/realtime.service';
@@ -57,6 +57,40 @@ export class PlaybackUseCase {
       presentMusicRequest(skipped),
     );
     return this.playNext(businessId);
+  }
+
+  /** Reproduce de inmediato una canción aprobada de la cola. */
+  async playRequest(businessId: string, requestId: string): Promise<MusicRequestView> {
+    const request = await this.requests.findById(requestId);
+    if (!request) throw new EntityNotFoundException('Canción', requestId);
+    if (request.businessId !== businessId) {
+      throw new ForbiddenDomainException('La canción no pertenece a tu negocio.');
+    }
+    if (request.status !== MusicRequestStatus.APPROVED) {
+      throw new BusinessRuleViolationException('Solo puedes reproducir canciones aprobadas en cola.');
+    }
+
+    const current = await this.requests.findNowPlaying(businessId);
+    if (current?.id === requestId) {
+      return presentMusicRequest(current);
+    }
+
+    if (current) {
+      current.skip();
+      const skipped = await this.requests.update(current);
+      this.realtime.emitToBusiness(
+        businessId,
+        SocketEvents.MUSIC_SKIPPED,
+        presentMusicRequest(skipped),
+      );
+    }
+
+    request.markPlaying();
+    const updated = await this.requests.update(request);
+    const view = presentMusicRequest(updated);
+    this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, view);
+    await this.emitQueue(businessId);
+    return view;
   }
 
   private async emitQueue(businessId: string): Promise<void> {

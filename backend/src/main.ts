@@ -2,20 +2,30 @@ import 'reflect-metadata';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { RedisIoAdapter } from '@infrastructure/realtime/redis-io.adapter';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: false });
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: false });
   const config = app.get(ConfigService);
   const logger = new Logger('Bootstrap');
 
   const apiPrefix = config.get<string>('app.apiPrefix') ?? 'api';
   const port = config.get<number>('app.port') ?? 3000;
   const corsOrigins = config.get<string[]>('security.corsOrigins') ?? ['http://localhost:5173'];
+  const uploadDirConfig = config.get<string>('uploads.dir') ?? 'uploads';
+  const uploadDir = uploadDirConfig.startsWith('/') || /^[A-Za-z]:\\/.test(uploadDirConfig)
+    ? uploadDirConfig
+    : join(process.cwd(), uploadDirConfig);
 
   app.setGlobalPrefix(apiPrefix);
+
+  app.useStaticAssets(uploadDir, {
+    prefix: `/${apiPrefix}/uploads/`,
+  });
 
   app.use(
     helmet({

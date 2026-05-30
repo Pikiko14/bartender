@@ -21,6 +21,7 @@ import { OrdersModule } from '@modules/orders/orders.module';
 import { MusicModule } from '@modules/music/music.module';
 import { AnalyticsModule } from '@modules/analytics/analytics.module';
 import { SubscriptionsModule } from '@modules/subscriptions/subscriptions.module';
+import { UploadsModule } from '@infrastructure/uploads/uploads.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { SubscriptionsModule } from '@modules/subscriptions/subscriptions.module
     MusicModule,
     AnalyticsModule,
     SubscriptionsModule,
+    UploadsModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

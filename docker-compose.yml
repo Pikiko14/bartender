@@ -50,8 +50,11 @@ services:
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
       QR_BASE_URL: ${QR_BASE_URL:-http://localhost:5173}
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+      UPLOAD_DIR: /app/uploads
     ports:
       - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - uploads_data:/app/uploads
     networks:
       - bartender
 
@@ -76,6 +79,7 @@ services:
 volumes:
   mongo_data:
   redis_data:
+  uploads_data:
 
 networks:
   bartender:

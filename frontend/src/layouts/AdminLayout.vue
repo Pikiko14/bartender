@@ -25,14 +25,21 @@
       </nav>
 
       <div class="absolute inset-x-5 bottom-5 space-y-2">
+        <a
+          v-if="djShareHref"
+          :href="djShareHref"
+          target="_blank"
+          class="block text-xs text-slate-500 hover:text-slate-300"
+          >↗ Pantalla DJ (compartir)</a
+        >
+        <a v-else href="/dj" target="_blank" class="block text-xs text-slate-500 hover:text-slate-300"
+          >↗ Pantalla DJ</a
+        >
         <a href="/kds" target="_blank" class="block text-xs text-slate-500 hover:text-slate-300"
           >↗ Pantalla cocina (KDS)</a
         >
         <a href="/bar" target="_blank" class="block text-xs text-slate-500 hover:text-slate-300"
           >↗ Pantalla barra</a
-        >
-        <a href="/dj" target="_blank" class="block text-xs text-slate-500 hover:text-slate-300"
-          >↗ Pantalla DJ</a
         >
       </div>
     </aside>
@@ -78,6 +85,7 @@ import { RouterLink, RouterView, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { useBusinessStore } from '@/stores/business.store';
 import { realtime } from '@/socket/socket';
+import { djShareUrl } from '@/shared/dj-share';
 import ToastHost from '@/components/ToastHost.vue';
 
 const auth = useAuthStore();
@@ -100,6 +108,9 @@ const links = [
 
 const visibleLinks = computed(() => links.filter((l) => auth.can(l.perm)));
 const needsBusiness = computed(() => auth.hasRole('OWNER') && !auth.user?.businessId);
+const djShareHref = computed(() =>
+  business.current?.slug ? djShareUrl(business.current.slug) : '',
+);
 
 onMounted(async () => {
   if (auth.hasRole('OWNER')) {

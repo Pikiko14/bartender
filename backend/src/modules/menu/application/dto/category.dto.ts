@@ -5,10 +5,10 @@ import {
   IsInt,
   IsOptional,
   IsString,
-  IsUrl,
   MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
 import { MenuCategoryType } from '@shared/enums';
 
@@ -28,7 +28,8 @@ export class CreateCategoryDto {
   order?: number;
 
   @IsOptional()
-  @IsUrl()
+  @IsString()
+  @MaxLength(512)
   image?: string;
 }
 
@@ -54,6 +55,8 @@ export class UpdateCategoryDto {
   active?: boolean;
 
   @IsOptional()
-  @IsUrl()
-  image?: string;
+  @ValidateIf((_, value) => value !== null)
+  @IsString()
+  @MaxLength(512)
+  image?: string | null;
 }

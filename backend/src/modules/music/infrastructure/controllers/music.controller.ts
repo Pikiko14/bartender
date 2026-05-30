@@ -53,4 +53,10 @@ export class MusicController {
   skip(@CurrentUser('businessId') businessId: string) {
     return this.playback.skip(businessId);
   }
+
+  @Post('requests/:id/play')
+  @RequirePermissions(Permission.MUSIC_PLAYBACK)
+  playRequest(@CurrentUser('businessId') businessId: string, @Param('id') id: string) {
+    return this.playback.playRequest(businessId, id);
+  }
 }

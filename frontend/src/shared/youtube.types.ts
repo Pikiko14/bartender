@@ -17,6 +17,8 @@ export interface YoutubePlayerInstance {
   getCurrentTime(): number;
   getDuration(): number;
   getVideoData(): { video_id: string };
+  seekTo?(seconds: number, allowSeekAhead?: boolean): void;
+  setVolume?(volume: number): void;
   setSize?(width: number, height: number): void;
   getIframe?(): HTMLIFrameElement;
   destroy(): void;
@@ -24,6 +26,8 @@ export interface YoutubePlayerInstance {
 
 export interface YoutubePlayerOptions {
   videoId?: string;
+  width?: string | number;
+  height?: string | number;
   playerVars?: Record<string, string | number>;
   events?: {
     onReady?: (event: { target: YoutubePlayerInstance }) => void;
@@ -37,6 +41,7 @@ export interface YoutubePlayerConstructor {
 }
 
 export const YT_PLAYER_STATE = {
+  UNSTARTED: -1,
   ENDED: 0,
   PLAYING: 1,
   PAUSED: 2,
