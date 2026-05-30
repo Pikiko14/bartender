@@ -7,6 +7,7 @@ export interface OrderProps {
   businessId: string;
   tableId: string;
   sessionId: string;
+  tableSessionId: string;
   items: OrderItem[];
   status: OrderStatus;
   notes?: string | null;
@@ -28,6 +29,9 @@ export class Order {
   }
   get sessionId(): string {
     return this.props.sessionId;
+  }
+  get tableSessionId(): string {
+    return this.props.tableSessionId;
   }
   get items(): OrderItem[] {
     return this.props.items;

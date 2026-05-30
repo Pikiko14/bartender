@@ -7,6 +7,7 @@ export interface GuestSession {
   sessionId: string;
   businessId: string;
   tableId: string;
+  tableSessionId: string;
   createdAt: string;
 }
 
@@ -20,14 +21,21 @@ export class GuestSessionService {
     return `guest:${sessionId}`;
   }
 
-  async create(businessId: string, tableId: string): Promise<GuestSession> {
+  async create(businessId: string, tableId: string, tableSessionId: string): Promise<GuestSession> {
     const sessionId = `guest_${uuid().replace(/-/g, '').slice(0, 16)}`;
     const session: GuestSession = {
       sessionId,
       businessId,
       tableId,
+      tableSessionId,
       createdAt: new Date().toISOString(),
     };
+    await this.redis.set(this.key(sessionId), session, this.ttlSeconds);
+    return session;
+  }
+
+  async touch(sessionId: string): Promise<GuestSession> {
+    const session = await this.get(sessionId);
     await this.redis.set(this.key(sessionId), session, this.ttlSeconds);
     return session;
   }

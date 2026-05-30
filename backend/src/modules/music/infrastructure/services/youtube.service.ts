@@ -18,6 +18,19 @@ interface YoutubeSearchResponse {
   }>;
 }
 
+interface YoutubeVideosResponse {
+  items?: Array<{
+    id: string;
+    status?: {
+      embeddable?: boolean;
+      privacyStatus?: string;
+    };
+    contentDetails?: {
+      contentRating?: { ytRating?: string };
+    };
+  }>;
+}
+
 @Injectable()
 export class YoutubeService {
   private readonly logger = new Logger(YoutubeService.name);
@@ -64,5 +77,67 @@ export class YoutubeService {
       this.logger.error(`Error consultando YouTube: ${(error as Error).message}`);
       throw new HttpException('No se pudo consultar YouTube.', 502);
     }
+  }
+
+  /** Valida si un video permite reproducción embebida (público, sin restricción de edad). */
+  async isEmbeddable(videoId: string): Promise<boolean> {
+    const statuses = await this.getVideoPlayability([videoId]);
+    return statuses.get(videoId) ?? false;
+  }
+
+  /** Busca una versión alternativa embeddable del mismo tema. */
+  async findAlternativeVideo(title: string, artist?: string): Promise<YoutubeVideo | null> {
+    const artistName = artist?.trim() ?? '';
+    const queries = [
+      `${title} ${artistName} lyric`.trim(),
+      `${title} ${artistName} audio`.trim(),
+      `${title} ${artistName} live`.trim(),
+      `${title} ${artistName}`.trim(),
+    ].filter((q) => q.length > 0);
+
+    const seen = new Set<string>();
+
+    for (const query of queries) {
+      const results = await this.search(query, 8);
+      const candidates = results.filter((r) => r.youtubeId && !seen.has(r.youtubeId));
+      if (!candidates.length) continue;
+
+      candidates.forEach((c) => seen.add(c.youtubeId));
+      const playability = await this.getVideoPlayability(candidates.map((c) => c.youtubeId));
+
+      for (const candidate of candidates) {
+        if (playability.get(candidate.youtubeId)) return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  private async getVideoPlayability(videoIds: string[]): Promise<Map<string, boolean>> {
+    const map = new Map<string, boolean>();
+    const ids = [...new Set(videoIds.filter(Boolean))];
+    if (!ids.length) return map;
+
+    try {
+      const { data } = await axios.get<YoutubeVideosResponse>(`${this.base}/videos`, {
+        params: {
+          key: this.apiKey,
+          part: 'status,contentDetails',
+          id: ids.join(','),
+        },
+        timeout: 8000,
+      });
+
+      for (const item of data.items ?? []) {
+        const embeddable = item.status?.embeddable === true;
+        const isPublic = item.status?.privacyStatus === 'public';
+        const ageRestricted = item.contentDetails?.contentRating?.ytRating === 'ytAgeRestricted';
+        map.set(item.id, embeddable && isPublic && !ageRestricted);
+      }
+    } catch (error) {
+      this.logger.warn(`No se pudo validar embeddable: ${(error as Error).message}`);
+    }
+
+    return map;
   }
 }

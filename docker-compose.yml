@@ -51,6 +51,9 @@ services:
       QR_BASE_URL: ${QR_BASE_URL:-http://localhost:5173}
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
       UPLOAD_DIR: /app/uploads
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:5173}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:3000}
+      MERCADOPAGO_ACCESS_TOKEN: ${MERCADOPAGO_ACCESS_TOKEN:-}
     ports:
       - "${BACKEND_PORT:-3000}:3000"
     volumes:

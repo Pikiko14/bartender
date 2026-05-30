@@ -77,7 +77,25 @@
 
       <!-- MIS PEDIDOS -->
       <section v-show="tab === 'orders'" class="px-5 py-4">
-        <h2 class="mb-3 text-lg font-bold">Mis pedidos</h2>
+        <div v-if="tableClosed" class="card mb-4 border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
+          La cuenta de esta mesa fue cerrada. Escanea el QR de nuevo para pedir.
+        </div>
+
+        <div v-if="bill.lines.length" class="card mb-4 p-4">
+          <h2 class="text-lg font-bold">Cuenta de la mesa</h2>
+          <p class="text-xs text-slate-500">{{ table?.name }} · {{ bill.orderCount }} pedido(s)</p>
+          <ul class="mt-3 space-y-2">
+            <li v-for="line in bill.lines" :key="line.menuItemId" class="flex justify-between text-sm">
+              <span>{{ line.quantity }}× {{ line.name }}</span>
+              <span class="font-medium">{{ formatMoney(line.subtotal) }}</span>
+            </li>
+          </ul>
+          <p class="mt-3 border-t border-ink-700 pt-3 text-right text-lg font-bold text-neon-cyan">
+            Total {{ formatMoney(bill.total) }}
+          </p>
+        </div>
+
+        <h2 class="mb-3 text-lg font-bold">Detalle por pedido</h2>
         <div v-if="myOrders.length" class="space-y-3">
           <div v-for="o in myOrders" :key="o.id" class="card p-4">
             <div class="flex items-center justify-between">
@@ -86,13 +104,13 @@
                 ORDER_STATUS_LABEL[o.status]
               }}</span>
             </div>
-            <ul class="mt-2 text-sm text-slate-400">
-              <li v-for="(it, i) in o.items" :key="i">{{ it.quantity }}× {{ it.name }}</li>
+            <ul class="mt-2 space-y-1">
+              <OrderItemLine v-for="(it, i) in o.items" :key="i" :item="it" />
             </ul>
             <p class="mt-2 text-right text-sm font-bold">{{ formatMoney(o.total) }}</p>
           </div>
         </div>
-        <p v-else class="text-sm text-slate-500">Aún no has pedido nada.</p>
+        <p v-else class="text-sm text-slate-500">Aún no hay pedidos en esta mesa.</p>
       </section>
 
       <!-- MÚSICA -->
@@ -151,8 +169,12 @@
             </div>
           </div>
         </div>
-        <button class="btn-primary w-full" :disabled="sending" @click="submitOrder">
-          {{ sending ? 'Enviando…' : `Enviar pedido · ${formatMoney(cartTotal)}` }}
+        <button
+          class="btn-primary w-full"
+          :disabled="sending || tableClosed"
+          @click="submitOrder"
+        >
+          {{ tableClosed ? 'Mesa cerrada' : sending ? 'Enviando…' : `Enviar pedido · ${formatMoney(cartTotal)}` }}
         </button>
       </div>
     </template>
@@ -165,12 +187,14 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import MenuImage from '@/components/MenuImage.vue';
+import OrderItemLine from '@/components/OrderItemLine.vue';
 import { publicApi } from '@/services/api';
 import { realtime, SocketEvents } from '@/socket/socket';
 import { formatMoney } from '@/shared/format';
 import { categoryIcon } from '@/shared/menu-icons';
 import { ORDER_STATUS_CLASS, ORDER_STATUS_LABEL } from '@/shared/order-status';
 import { apiErrorMessage } from '@/services/http';
+import { setDocumentTitle } from '@/shared/document-title';
 import { useToast } from '@/composables/useToast';
 import ToastHost from '@/components/ToastHost.vue';
 import type {
@@ -179,6 +203,7 @@ import type {
   MenuItem,
   MusicQueue,
   Order,
+  TableBill,
   TableEntity,
   YoutubeVideo,
 } from '@/shared/types';
@@ -198,8 +223,25 @@ const tabs = [
 const business = ref<Business | null>(null);
 const table = ref<TableEntity | null>(null);
 const sessionId = ref('');
+const tableSessionId = ref('');
+const tableClosed = ref(false);
 const menu = ref<MenuCategory[]>([]);
 const myOrders = ref<Order[]>([]);
+const bill = reactive<TableBill>({
+  tableSession: {
+    id: '',
+    businessId: '',
+    tableId: '',
+    status: 'open',
+    openedAt: '',
+    closedAt: null,
+  },
+  tableId: '',
+  orders: [],
+  lines: [],
+  orderCount: 0,
+  total: 0,
+});
 
 const cart = reactive<Array<{ item: MenuItem; qty: number }>>([]);
 const sending = ref(false);
@@ -219,16 +261,41 @@ function removeFromCart(id: string) {
   if (idx >= 0) cart.splice(idx, 1);
 }
 
+async function refreshTableData() {
+  if (!sessionId.value) return;
+  const [orders, billData] = await Promise.all([
+    publicApi.ordersByTableSession(sessionId.value).catch(() => []),
+    publicApi.tableBill(sessionId.value).catch(() => null),
+  ]);
+  myOrders.value = orders;
+  if (billData) {
+    bill.tableSession = billData.tableSession;
+    bill.tableId = billData.tableId;
+    bill.tableName = billData.tableName;
+    bill.tableNumber = billData.tableNumber;
+    bill.orders = billData.orders;
+    bill.lines = billData.lines;
+    bill.orderCount = billData.orderCount;
+    bill.total = billData.total;
+    tableClosed.value = billData.closed === true || billData.tableSession?.status === 'closed';
+    tableSessionId.value = billData.tableSession?.id ?? tableSessionId.value;
+  }
+}
+
 async function submitOrder() {
+  if (tableClosed.value) {
+    toast.error('La mesa está cerrada. Escanea el QR de nuevo.');
+    return;
+  }
   sending.value = true;
   try {
-    const order = await publicApi.createOrder({
+    await publicApi.createOrder({
       sessionId: sessionId.value,
       items: cart.map((l) => ({ menuItemId: l.item.id, quantity: l.qty })),
     });
-    myOrders.value.unshift(order);
     cart.splice(0, cart.length);
     tab.value = 'orders';
+    await refreshTableData();
     toast.success('¡Pedido enviado!');
   } catch (e) {
     toast.error(apiErrorMessage(e));
@@ -277,27 +344,38 @@ onMounted(async () => {
   const businessSlug = String(route.params.businessSlug);
   const tableSlug = String(route.params.tableSlug);
   try {
-    const scan = await publicApi.scan(businessSlug, tableSlug);
+    const storedSession = localStorage.getItem(sessionKey()) ?? undefined;
+    const scan = await publicApi.scan(businessSlug, tableSlug, storedSession);
     business.value = scan.business;
     table.value = scan.table;
+    setDocumentTitle(`${scan.table.name} · ${scan.business.name}`);
     sessionId.value = scan.session.sessionId;
+    tableSessionId.value = scan.tableSession.id;
+    tableClosed.value = scan.tableSession.status === 'closed';
     localStorage.setItem(sessionKey(), sessionId.value);
 
     menu.value = await publicApi.menu(businessSlug);
-    const [orders, q] = await Promise.all([
-      publicApi.ordersBySession(sessionId.value).catch(() => []),
-      publicApi.publicQueue(businessSlug).catch(() => ({ nowPlaying: null, queue: [] })),
-    ]);
-    myOrders.value = orders;
+    await refreshTableData();
+
+    const q = await publicApi.publicQueue(businessSlug).catch(() => ({ nowPlaying: null, queue: [] }));
     queue.nowPlaying = q.nowPlaying;
     queue.queue = q.queue;
 
-    // Realtime: tracking de pedidos y cola de música.
     realtime.joinTable(scan.table.id);
     realtime.joinBusiness(scan.business.id);
+    realtime.on<Order>(SocketEvents.ORDER_CREATED, () => {
+      void refreshTableData();
+    });
     realtime.on<Order>(SocketEvents.ORDER_UPDATED, (o) => {
       const idx = myOrders.value.findIndex((x) => x.id === o.id);
       if (idx >= 0) myOrders.value[idx] = o;
+      void refreshTableData();
+    });
+    realtime.on<{ tableSessionId: string }>(SocketEvents.TABLE_SESSION_CLOSED, (payload) => {
+      if (payload.tableSessionId === tableSessionId.value) {
+        tableClosed.value = true;
+        toast.info('La cuenta de la mesa fue cerrada.');
+      }
     });
     realtime.on<MusicQueue>(SocketEvents.MUSIC_QUEUE_UPDATED, (q2) => {
       queue.nowPlaying = q2.nowPlaying;

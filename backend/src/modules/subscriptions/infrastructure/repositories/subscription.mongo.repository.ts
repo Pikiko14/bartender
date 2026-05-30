@@ -46,6 +46,10 @@ export class PlanMongoRepository extends PlanRepository {
       .exec();
     return PlanMapper.toDomain(updated as PlanDocument);
   }
+
+  async deactivateExcept(activeSlugs: string[]): Promise<void> {
+    await this.model.updateMany({ slug: { $nin: activeSlugs } }, { $set: { active: false } }).exec();
+  }
 }
 
 @Injectable()

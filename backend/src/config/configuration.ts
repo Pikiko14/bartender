@@ -41,6 +41,12 @@ export interface UploadsConfig {
   maxFileSize: number;
 }
 
+export interface MercadoPagoConfig {
+  accessToken: string;
+  publicAppUrl: string;
+  webhookBaseUrl: string;
+}
+
 export interface Configuration {
   app: AppConfig;
   mongo: MongoConfig;
@@ -50,6 +56,7 @@ export interface Configuration {
   qr: QrConfig;
   youtube: YoutubeConfig;
   uploads: UploadsConfig;
+  mercadoPago: MercadoPagoConfig;
 }
 
 export default (): Configuration => ({
@@ -90,5 +97,10 @@ export default (): Configuration => ({
   uploads: {
     dir: process.env.UPLOAD_DIR ?? 'uploads',
     maxFileSize: parseInt(process.env.UPLOAD_MAX_FILE_SIZE ?? String(5 * 1024 * 1024), 10),
+  },
+  mercadoPago: {
+    accessToken: process.env.MERCADOPAGO_ACCESS_TOKEN ?? '',
+    publicAppUrl: process.env.PUBLIC_APP_URL ?? 'http://localhost:5173',
+    webhookBaseUrl: process.env.PUBLIC_API_URL ?? 'http://localhost:3000',
   },
 });

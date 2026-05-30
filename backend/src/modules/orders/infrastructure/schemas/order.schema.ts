@@ -23,6 +23,9 @@ export class OrderItemSubdoc {
 
   @Prop({ type: String, default: null })
   notes!: string | null;
+
+  @Prop({ type: String, default: null })
+  image!: string | null;
 }
 
 const OrderItemSubSchema = SchemaFactory.createForClass(OrderItemSubdoc);
@@ -37,6 +40,9 @@ export class OrderModel {
 
   @Prop({ required: true, index: true })
   sessionId!: string;
+
+  @Prop({ type: String, index: true, default: null })
+  tableSessionId!: string | null;
 
   @Prop({ type: [OrderItemSubSchema], required: true })
   items!: OrderItemSubdoc[];

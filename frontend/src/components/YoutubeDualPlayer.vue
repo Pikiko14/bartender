@@ -41,6 +41,14 @@
     </div>
 
     <div
+      v-if="fallbackLoading"
+      class="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/90 p-4 text-center"
+    >
+      <div class="h-8 w-8 animate-spin rounded-full border-2 border-neon-cyan border-t-transparent" />
+      <p class="text-sm text-slate-300">Buscando una versión disponible…</p>
+    </div>
+
+    <div
       v-if="autoplayBlocked"
       class="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-black/80 p-4 text-center"
     >
@@ -74,7 +82,16 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { loadYoutubeIframeApi } from '@/composables/useYoutubeIframeApi';
+import { useToast } from '@/composables/useToast';
 import { useMusicStore } from '@/stores/music.store';
+import {
+  getCachedTrackResolution,
+  handleBlockedVideo,
+  isEmbedBlockedError,
+  markBlocked,
+  prefetchTrackForPlayback,
+  resolveTrackForPlayback,
+} from '@/services/youtubeFallbackService';
 import { onPlaybackSync, type PlaybackSyncCommand } from '@/shared/playback-sync';
 import {
   YT_PLAYER_STATE,
@@ -108,10 +125,12 @@ const props = withDefaults(
 );
 
 const music = useMusicStore();
+const toast = useToast();
 
 const emit = defineEmits<{
   ended: [track: YoutubePlayerTrack];
   error: [track: YoutubePlayerTrack, code: number];
+  'external-fallback': [track: YoutubePlayerTrack];
   'need-sync': [];
   playing: [track: YoutubePlayerTrack];
   'queue-empty': [];
@@ -138,6 +157,11 @@ const remainingSec = ref(0);
 const progressPct = ref(0);
 const suppressPlaybackBroadcast = ref(false);
 const prevActivePlayerState = ref<number | null>(null);
+const fallbackLoading = ref(false);
+const resolvingBlocked = ref(false);
+const prefetchingNextId = ref<string | null>(null);
+/** ID de la pista que ya suena en el player activo (evita recargas al cambiar props). */
+const activeTrackId = ref<string | null>(null);
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 let unregPlaybackSync: (() => void) | null = null;
@@ -155,8 +179,15 @@ const queueEmptySoon = computed(
 
 const statusLabel = computed(() => {
   if (swapping.value) return 'Transición DJ…';
-  if (props.nextTrack && preloadedReady.value[inactiveSlot()] === props.nextTrack.youtubeId) {
-    return '⏭ Siguiente listo';
+  if (props.nextTrack) {
+    const resolved = getCachedTrackResolution(props.nextTrack.id);
+    const nextYoutubeId = resolved?.ok ? resolved.youtubeId : props.nextTrack.youtubeId;
+    if (preloadedReady.value[inactiveSlot()] === nextYoutubeId) {
+      return '⏭ Siguiente listo';
+    }
+    if (prefetchingNextId.value === props.nextTrack.id) {
+      return '⏭ Preparando siguiente…';
+    }
   }
   if (playerState.value === YT_PLAYER_STATE.BUFFERING) return 'Buffering…';
   if (playerState.value === YT_PLAYER_STATE.PLAYING) {
@@ -165,6 +196,40 @@ const statusLabel = computed(() => {
   if (playerState.value === YT_PLAYER_STATE.PAUSED) return 'Pausado';
   return '';
 });
+
+function toPlaybackSource(track: YoutubePlayerTrack) {
+  return {
+    trackId: track.id,
+    youtubeId: track.youtubeId,
+    title: track.title,
+    channelTitle: track.channelTitle,
+  };
+}
+
+function resolvedYoutubeId(track: YoutubePlayerTrack): string {
+  const cached = getCachedTrackResolution(track.id);
+  return cached?.ok ? cached.youtubeId : track.youtubeId;
+}
+
+function isSlotReadyForVideo(slot: Slot, youtubeId: string): boolean {
+  if (getVideoId(slot) !== youtubeId) return false;
+  if (preloadedReady.value[slot] === youtubeId) return true;
+  try {
+    const state = slotPlayer(slot)?.getPlayerState();
+    return (
+      state === YT_PLAYER_STATE.PAUSED ||
+      state === YT_PLAYER_STATE.CUED ||
+      state === YT_PLAYER_STATE.PLAYING ||
+      state === YT_PLAYER_STATE.BUFFERING
+    );
+  } catch {
+    return false;
+  }
+}
+
+function trackFromResolved(track: YoutubePlayerTrack, youtubeId: string, title: string): YoutubePlayerTrack {
+  return { ...track, youtubeId, title };
+}
 
 function formatTime(sec: number): string {
   if (!sec || sec < 0) return '0:00';
@@ -187,6 +252,25 @@ function getVideoId(slot: Slot): string {
   } catch {
     return '';
   }
+}
+
+function isTrackActiveOnPlayer(track: YoutubePlayerTrack): boolean {
+  if (activeTrackId.value !== track.id) return false;
+  try {
+    const state = slotPlayer(activeSlot.value)?.getPlayerState();
+    return (
+      state === YT_PLAYER_STATE.PLAYING ||
+      state === YT_PLAYER_STATE.BUFFERING ||
+      state === YT_PLAYER_STATE.PAUSED ||
+      state === YT_PLAYER_STATE.CUED
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isPlayingTrack(trackId: string): boolean {
+  return activeTrackId.value === trackId;
 }
 
 
@@ -412,10 +496,14 @@ async function initPlayers() {
       }
     },
     onError: (event: { data: number }) => {
-      if (slot === activeSlot.value && props.currentTrack) {
-        emit('error', props.currentTrack, event.data ?? -1);
-        void skipToNext(true);
+      if (slot !== activeSlot.value || !props.currentTrack || resolvingBlocked.value) return;
+      const code = event.data ?? -1;
+      if (isEmbedBlockedError(code)) {
+        void handleEmbedBlocked(props.currentTrack, code);
+        return;
       }
+      emit('error', props.currentTrack, code);
+      void skipToNext(true);
     },
   });
 
@@ -443,7 +531,7 @@ function maybeStart() {
   swappedTrackId.value = null;
   pauseAfterLoadSlot.value = null;
   activateTrack(props.currentTrack);
-  preloadNext(props.nextTrack);
+  void prefetchNextTrack(props.nextTrack);
   startTick();
 }
 
@@ -460,43 +548,68 @@ function loadIntoSlot(slot: Slot, youtubeId: string) {
   }
 }
 
-/** Precarga en player inactivo: loadVideoById + pausa en mute. */
-function preloadNext(track: YoutubePlayerTrack | null) {
-  if (!track || !bothReady() || swapping.value) return;
-  const slot = inactiveSlot();
-  if (loadedIds.value[slot] === track.youtubeId && preloadedReady.value[slot] === track.youtubeId) {
-    return;
-  }
-  if (loadedIds.value[slot] === track.youtubeId && pauseAfterLoadSlot.value === slot) return;
+/** Resuelve en background + precarga iframe del siguiente tema. */
+async function prefetchNextTrack(track: YoutubePlayerTrack | null) {
+  if (!track || !bothReady() || swapping.value || resolvingBlocked.value) return;
+  if (prefetchingNextId.value === track.id) return;
 
+  prefetchingNextId.value = track.id;
   try {
-    slotPlayer(slot)?.mute();
-    loadIntoSlot(slot, track.youtubeId);
-    pauseAfterLoadSlot.value = slot;
-  } catch {
-    /* ignore */
+    const result = await prefetchTrackForPlayback(toPlaybackSource(track));
+    if (!result.ok) return;
+
+    const youtubeId = result.youtubeId;
+    const slot = inactiveSlot();
+    if (isSlotReadyForVideo(slot, youtubeId)) return;
+    if (loadedIds.value[slot] === youtubeId && pauseAfterLoadSlot.value === slot) return;
+
+    try {
+      slotPlayer(slot)?.mute();
+      loadIntoSlot(slot, youtubeId);
+      pauseAfterLoadSlot.value = slot;
+    } catch {
+      /* ignore */
+    }
+  } finally {
+    if (prefetchingNextId.value === track.id) prefetchingNextId.value = null;
   }
 }
 
-/** A ~8 s del final: asegurar que el inactivo ya cargó el video. */
+/** A ~8 s del final: reintentar precarga si aún no está lista. */
 function prebufferNext(track: YoutubePlayerTrack) {
   if (!bothReady() || swapping.value) return;
   const slot = inactiveSlot();
-  if (preloadedReady.value[slot] === track.youtubeId) return;
-  preloadNext(track);
+  const expectedId = resolvedYoutubeId(track);
+  if (isSlotReadyForVideo(slot, expectedId)) return;
+  void prefetchNextTrack(track);
 }
 
-function playSlot(slot: Slot, track: YoutubePlayerTrack) {
+function playSlot(slot: Slot, track: YoutubePlayerTrack, options: { restart?: boolean } = {}) {
   const player = slotPlayer(slot);
   if (!player) return;
+
+  const restart = options.restart !== false;
 
   try {
     player.unMute();
     player.setVolume?.(100);
 
     if (loadedIds.value[slot] === track.youtubeId) {
-      player.seekTo?.(0, true);
-      player.playVideo();
+      if (restart) {
+        try {
+          const state = player.getPlayerState();
+          if (state === YT_PLAYER_STATE.PAUSED || state === YT_PLAYER_STATE.CUED) {
+            player.playVideo();
+          } else {
+            player.seekTo?.(0, true);
+            player.playVideo();
+          }
+        } catch {
+          player.playVideo();
+        }
+      } else {
+        player.playVideo();
+      }
     } else {
       player.loadVideoById(track.youtubeId, 0);
       loadedIds.value[slot] = track.youtubeId;
@@ -528,42 +641,168 @@ async function ensurePlaying(slot: Slot, track: YoutubePlayerTrack): Promise<voi
   }
 }
 
-function activateTrack(track: YoutubePlayerTrack) {
-  if (!bothReady()) return;
+async function revealActiveSlot(slot: Slot) {
+  await nextTick();
+  refreshVisiblePlayer(slot);
+  try {
+    const player = slotPlayer(slot);
+    player?.unMute();
+    player?.setVolume?.(100);
+    player?.playVideo();
+  } catch {
+    /* ignore */
+  }
+  requestAnimationFrame(() => refreshVisiblePlayer(slot));
+  setTimeout(() => refreshVisiblePlayer(slot), 120);
+}
+
+async function preparePlaybackTrack(
+  track: YoutubePlayerTrack,
+  options: { silent?: boolean } = {},
+): Promise<YoutubePlayerTrack | null> {
+  const silent = options.silent === true;
+  const cached = getCachedTrackResolution(track.id);
+  if (cached?.ok) {
+    return trackFromResolved(track, cached.youtubeId, cached.title);
+  }
+
+  if (!silent) fallbackLoading.value = true;
+  try {
+    const result = await resolveTrackForPlayback(toPlaybackSource(track));
+
+    if (result.ok) {
+      return trackFromResolved(track, result.youtubeId, result.title);
+    }
+
+    if (!silent) {
+      toast.warning('Este tema no puede reproducirse dentro de la app. Abriendo YouTube.');
+    }
+    try {
+      slotPlayer(activeSlot.value)?.stopVideo();
+      loadedIds.value[activeSlot.value] = '';
+    } catch {
+      /* ignore */
+    }
+    emit('external-fallback', track);
+    return null;
+  } finally {
+    if (!silent) fallbackLoading.value = false;
+  }
+}
+
+async function handleEmbedBlocked(track: YoutubePlayerTrack, code: number) {
+  if (resolvingBlocked.value || swapping.value) return;
+  resolvingBlocked.value = true;
+  markBlocked(track.youtubeId);
+  console.log('[YOUTUBE] Error embed en reproducción:', code, track.youtubeId);
+
+  try {
+    slotPlayer(activeSlot.value)?.stopVideo();
+    loadedIds.value[activeSlot.value] = '';
+    preloadedReady.value[activeSlot.value] = '';
+  } catch {
+    /* ignore */
+  }
+
+  fallbackLoading.value = true;
+  try {
+    const result = await handleBlockedVideo(toPlaybackSource(track));
+
+    if (result.ok) {
+      await activateTrackInner({
+        ...track,
+        youtubeId: result.youtubeId,
+        title: result.title,
+      });
+      return;
+    }
+
+    toast.warning('Este tema no puede reproducirse dentro de la app. Abriendo YouTube.');
+    emit('external-fallback', track);
+    if (props.syncToBackend) {
+      emit('need-sync');
+    } else if (props.nextTrack) {
+      await skipToNext(true);
+    } else {
+      await finishCurrentTrack(true);
+    }
+  } finally {
+    fallbackLoading.value = false;
+    resolvingBlocked.value = false;
+  }
+}
+
+async function activateTrack(track: YoutubePlayerTrack) {
+  if (!bothReady() || resolvingBlocked.value) return;
+
+  const prepared = await preparePlaybackTrack(track);
+  if (!prepared) {
+    if (props.syncToBackend) {
+      emit('need-sync');
+    } else if (props.nextTrack) {
+      await skipToNext(true);
+    }
+    return;
+  }
+
+  await activateTrackInner(prepared);
+}
+
+async function activateTrackInner(track: YoutubePlayerTrack) {
+  if (isTrackActiveOnPlayer(track)) {
+    syncPlayerStateFromSlot(activeSlot.value);
+    autoplayBlocked.value = false;
+    updateProgress();
+    emit('playing', track);
+    void prefetchNextTrack(props.nextTrack);
+    return;
+  }
 
   swappedTrackId.value = null;
   pauseAfterLoadSlot.value = null;
 
   const youtubeId = track.youtubeId;
-  const slots: Slot[] = ['a', 'b'];
+  let preloadedSlot: Slot | null = null;
 
-  for (const slot of slots) {
-    if (getVideoId(slot) !== youtubeId) continue;
+  for (const slot of ['a', 'b'] as Slot[]) {
+    if (getVideoId(slot) === youtubeId) {
+      preloadedSlot = slot;
+      break;
+    }
+  }
 
-    if (activeSlot.value !== slot) {
+  if (preloadedSlot && preloadedSlot !== activeSlot.value) {
+    const oldSlot = activeSlot.value;
+    swapping.value = true;
+    try {
+      await ensurePlaying(preloadedSlot, track);
+      activeSlot.value = preloadedSlot;
+      syncPlayerStateFromSlot(preloadedSlot);
+      await revealActiveSlot(preloadedSlot);
+
       try {
-        slotPlayer(activeSlot.value)?.stopVideo();
-        loadedIds.value[activeSlot.value] = '';
-        preloadedReady.value[activeSlot.value] = '';
+        slotPlayer(oldSlot)?.stopVideo();
+        loadedIds.value[oldSlot] = '';
+        preloadedReady.value[oldSlot] = '';
       } catch {
         /* ignore */
       }
-      activeSlot.value = slot;
+    } finally {
+      swapping.value = false;
     }
-
-    playSlot(slot, track);
-    syncPlayerStateFromSlot(slot);
-    emit('playing', track);
-    void nextTick().then(() => refreshVisiblePlayer(slot));
-    preloadNext(props.nextTrack);
-    return;
+  } else {
+    const slot = preloadedSlot ?? activeSlot.value;
+    if (slot !== activeSlot.value) activeSlot.value = slot;
+    await ensurePlaying(slot, track);
+    await revealActiveSlot(slot);
   }
 
-  playSlot(activeSlot.value, track);
   syncPlayerStateFromSlot(activeSlot.value);
+  autoplayBlocked.value = false;
+  updateProgress();
+  activeTrackId.value = track.id;
   emit('playing', track);
-  void nextTick().then(() => refreshVisiblePlayer(activeSlot.value));
-  preloadNext(props.nextTrack);
+  void prefetchNextTrack(props.nextTrack);
 }
 
 async function performEarlySwap(options: { emitSync?: boolean } = {}) {
@@ -588,29 +827,36 @@ async function performEarlySwap(options: { emitSync?: boolean } = {}) {
   swapping.value = true;
   swappedTrackId.value = finished.id;
 
-  // 1) Arrancar siguiente en player alterno (detrás, en mute si hace falta)
-  await ensurePlaying(nextSlot, next);
-
-  // 2) Cuando ya reproduce → hacer visible (swap z-index)
-  activeSlot.value = nextSlot;
-  syncPlayerStateFromSlot(nextSlot);
-
-  await nextTick();
-  refreshVisiblePlayer(nextSlot);
-
-  // 3) Forzar play + repaint tras volverse visible
-  try {
-    const visible = slotPlayer(nextSlot);
-    visible?.unMute();
-    visible?.setVolume?.(100);
-    visible?.playVideo();
-  } catch {
-    /* ignore */
+  const preparedNext = await preparePlaybackTrack(next, { silent: true });
+  if (!preparedNext) {
+    swapping.value = false;
+    swappedTrackId.value = null;
+    if (props.syncToBackend) emit('need-sync');
+    return;
   }
 
-  requestAnimationFrame(() => refreshVisiblePlayer(nextSlot));
+  const preloaded = isSlotReadyForVideo(nextSlot, preparedNext.youtubeId);
 
-  // 4) Parar player anterior
+  if (preloaded) {
+    playSlot(nextSlot, preparedNext, { restart: false });
+    await waitForPlayerState(
+      nextSlot,
+      [YT_PLAYER_STATE.PLAYING, YT_PLAYER_STATE.BUFFERING],
+      PLAY_WAIT_MS,
+    );
+    activeSlot.value = nextSlot;
+    syncPlayerStateFromSlot(nextSlot);
+    await revealActiveSlot(nextSlot);
+  } else {
+    await ensurePlaying(nextSlot, preparedNext);
+    activeSlot.value = nextSlot;
+    syncPlayerStateFromSlot(nextSlot);
+    await revealActiveSlot(nextSlot);
+  }
+
+  activeTrackId.value = preparedNext.id;
+
+  // Parar player anterior
   try {
     currentPlayer?.stopVideo();
     loadedIds.value[oldSlot] = '';
@@ -619,7 +865,7 @@ async function performEarlySwap(options: { emitSync?: boolean } = {}) {
     /* ignore */
   }
 
-  emit('playing', next);
+  emit('playing', preparedNext);
   if (emitSync && props.syncToBackend) {
     emit('ended', finished);
     emit('need-sync');
@@ -629,7 +875,7 @@ async function performEarlySwap(options: { emitSync?: boolean } = {}) {
 
   swapping.value = false;
   updateProgress();
-  preloadNext(props.nextTrack);
+  void prefetchNextTrack(props.nextTrack);
 }
 
 async function finishCurrentTrack(emitSync: boolean) {
@@ -691,7 +937,7 @@ function checkTransitionWindow() {
   const remaining = duration - current;
   const next = props.nextTrack;
 
-  if (next) preloadNext(next);
+  if (next) void prefetchNextTrack(next);
   if (swappedTrackId.value === props.currentTrack.id) return;
   if (!next) return;
 
@@ -730,34 +976,43 @@ function switchToTrack(track: YoutubePlayerTrack) {
   void applyTrackChange(track);
 }
 
+let trackChangeToken = 0;
+
 async function applyTrackChange(track: YoutubePlayerTrack) {
   if (swapping.value) return;
+
+  const token = ++trackChangeToken;
 
   const deadline = Date.now() + 12_000;
   while (!bothReady() && Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 80));
   }
-  if (!bothReady()) return;
+  if (!bothReady() || token !== trackChangeToken) return;
 
-  activateTrack(track);
+  await activateTrack(track);
 }
 
-defineExpose({ forceSkip, resumePlayback, togglePlayPause, switchToTrack });
+defineExpose({ forceSkip, resumePlayback, togglePlayPause, switchToTrack, isPlayingTrack });
 
 watch(
   () => props.currentTrack?.id,
   (id, prev) => {
     if (!id || id === prev || !props.currentTrack) return;
     if (swapping.value) return;
+    if (isTrackActiveOnPlayer(props.currentTrack)) {
+      swappedTrackId.value = null;
+      return;
+    }
+    swappedTrackId.value = null;
     void applyTrackChange(props.currentTrack);
   },
 );
 
 watch(
-  () => props.nextTrack?.youtubeId,
+  () => props.nextTrack?.id,
   (id, prev) => {
-    if (id === prev) return;
-    if (id) preloadNext(props.nextTrack);
+    if (!id || id === prev) return;
+    void prefetchNextTrack(props.nextTrack);
   },
 );
 

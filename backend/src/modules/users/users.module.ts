@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { SubscriptionsModule } from '@modules/subscriptions/subscriptions.module';
 import { UserPermissionsService } from './domain/services/user-permissions.service';
 import { USER_REPOSITORY } from './domain/repositories/user.repository';
 import { CreateUserUseCase } from './application/use-cases/create-user.use-case';
@@ -11,7 +12,10 @@ import { UserMongoRepository } from './infrastructure/repositories/user.mongo.re
 import { UserModel, UserSchema } from './infrastructure/schemas/user.schema';
 
 @Module({
-  imports: [MongooseModule.forFeature([{ name: UserModel.name, schema: UserSchema }])],
+  imports: [
+    MongooseModule.forFeature([{ name: UserModel.name, schema: UserSchema }]),
+    forwardRef(() => SubscriptionsModule),
+  ],
   controllers: [UsersController],
   providers: [
     UserPermissionsService,

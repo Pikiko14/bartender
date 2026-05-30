@@ -7,6 +7,7 @@ export interface OrderFilter {
   area?: PreparationArea;
   tableId?: string;
   sessionId?: string;
+  tableSessionId?: string;
   from?: Date;
   to?: Date;
 }

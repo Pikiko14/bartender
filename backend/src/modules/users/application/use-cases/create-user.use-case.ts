@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { v4 as uuid } from 'uuid';
 import { ConflictException } from '@core/domain/exceptions';
 import { PasswordService } from '@infrastructure/security/password.service';
+import { PlanFeaturesService } from '@modules/subscriptions/application/use-cases/subscription.use-cases';
 import { User } from '../../domain/entities/user.entity';
 import { USER_REPOSITORY, UserRepository } from '../../domain/repositories/user.repository';
 import { CreateUserDto } from '../dto/create-user.dto';
@@ -11,6 +12,7 @@ export class CreateUserUseCase {
   constructor(
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
     private readonly passwords: PasswordService,
+    private readonly planFeatures: PlanFeaturesService,
   ) {}
 
   /**
@@ -21,6 +23,9 @@ export class CreateUserUseCase {
     if (existing) {
       throw new ConflictException('Ya existe un usuario con ese email.');
     }
+
+    const userCount = await this.users.countByBusiness(businessId);
+    await this.planFeatures.assertCanAddUser(businessId, userCount);
 
     const passwordHash = await this.passwords.hash(dto.password);
 

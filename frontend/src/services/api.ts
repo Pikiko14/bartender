@@ -11,6 +11,8 @@ import type {
   MusicRequest,
   Order,
   OrderStatus,
+  ScanResult,
+  TableBill,
   TableEntity,
   YoutubeVideo,
 } from '@/shared/types';
@@ -92,6 +94,13 @@ export const ordersApi = {
   bar: () => unwrap<Order[]>(http.get('/orders/bar')),
   updateStatus: (id: string, status: OrderStatus) =>
     unwrap<Order>(http.patch(`/orders/${id}/status`, { status })),
+  openTableBills: () => unwrap<import('@/shared/types').TableBill[]>(http.get('/orders/table-bills/open')),
+  tableBill: (tableSessionId: string) =>
+    unwrap<import('@/shared/types').TableBill>(http.get(`/orders/table-bills/${tableSessionId}`)),
+  closeTableBill: (tableSessionId: string) =>
+    unwrap<import('@/shared/types').TableBill>(
+      http.post(`/orders/table-bills/${tableSessionId}/close`, {}),
+    ),
 };
 
 // ---- Music (staff) ----
@@ -104,6 +113,8 @@ export const musicApi = {
   playNext: () => unwrap<MusicRequest | null>(http.post('/music/play-next', {})),
   skip: () => unwrap<MusicRequest | null>(http.post('/music/skip', {})),
   playRequest: (id: string) => unwrap<MusicRequest>(http.post(`/music/requests/${id}/play`, {})),
+  syncPlaying: (id: string) =>
+    unwrap<MusicRequest>(http.post(`/music/requests/${id}/sync-playing`, {})),
 };
 
 // ---- Analytics ----
@@ -114,10 +125,11 @@ export const analyticsApi = {
 
 // ---- Público (cliente / QR) ----
 export const publicApi = {
-  scan: (businessSlug: string, tableSlug: string) =>
-    unwrap<{ session: GuestSession; business: Business; table: TableEntity }>(
-      http.post('/public/sessions/scan', { businessSlug, tableSlug }),
+  scan: (businessSlug: string, tableSlug: string, resumeSessionId?: string) =>
+    unwrap<ScanResult>(
+      http.post('/public/sessions/scan', { businessSlug, tableSlug, resumeSessionId }),
     ),
+  getSession: (sessionId: string) => unwrap<GuestSession>(http.get(`/public/sessions/${sessionId}`)),
   menu: (businessSlug: string) => unwrap<MenuCategory[]>(http.get(`/public/menu/${businessSlug}`)),
   createOrder: (body: {
     sessionId: string;
@@ -126,8 +138,16 @@ export const publicApi = {
   }) => unwrap<Order>(http.post('/public/orders', body)),
   ordersBySession: (sessionId: string) =>
     unwrap<Order[]>(http.get(`/public/orders/session/${sessionId}`)),
+  ordersByTableSession: (sessionId: string) =>
+    unwrap<Order[]>(http.get(`/public/orders/table-session/${sessionId}`)),
+  tableBill: (sessionId: string) =>
+    unwrap<TableBill>(http.get(`/public/orders/table-session/${sessionId}/bill`)),
   searchMusic: (q: string) =>
     unwrap<YoutubeVideo[]>(http.get('/public/music/search', { params: { q } })),
+  musicEmbeddable: (videoId: string) =>
+    unwrap<{ embeddable: boolean }>(http.get(`/public/music/videos/${videoId}/embeddable`)),
+  musicAlternative: (title: string, artist?: string) =>
+    unwrap<YoutubeVideo | null>(http.get('/public/music/alternatives', { params: { title, artist } })),
   requestSong: (body: {
     sessionId: string;
     youtubeId: string;
@@ -139,6 +159,12 @@ export const publicApi = {
     unwrap<MusicRequest>(http.post(`/public/music/requests/${id}/vote`, { sessionId })),
   publicQueue: (businessSlug: string) =>
     unwrap<MusicQueue>(http.get(`/public/music/${businessSlug}/queue`)),
+  publicPlayNext: (businessSlug: string) =>
+    unwrap<MusicRequest | null>(http.post(`/public/music/${businessSlug}/play-next`, {})),
+  publicPlayRequest: (businessSlug: string, id: string) =>
+    unwrap<MusicRequest>(http.post(`/public/music/${businessSlug}/requests/${id}/play`, {})),
+  publicSyncPlaying: (businessSlug: string, id: string) =>
+    unwrap<MusicRequest>(http.post(`/public/music/${businessSlug}/requests/${id}/sync-playing`, {})),
 };
 
 // ---- Planes y suscripciones ----
@@ -151,5 +177,9 @@ export const plansApi = {
   changePlan: (planSlug: string, billingCycle: 'monthly' | 'yearly') =>
     unwrap<{ subscription: import('@/shared/types').BusinessSubscription; plan: import('@/shared/types').Plan }>(
       http.post('/subscriptions/change-plan', { planSlug, billingCycle }),
+    ),
+  checkout: (planSlug: string, billingCycle: 'monthly' | 'yearly') =>
+    unwrap<{ preferenceId: string; checkoutUrl: string }>(
+      http.post('/subscriptions/checkout', { planSlug, billingCycle }),
     ),
 };

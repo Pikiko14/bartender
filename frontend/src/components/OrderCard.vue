@@ -3,19 +3,13 @@
     <div class="flex items-start justify-between">
       <div>
         <p class="text-sm font-semibold text-slate-200">Pedido #{{ order.id.slice(-5) }}</p>
-        <p class="text-xs text-slate-500">Mesa {{ displayTable }} · hace {{ minutes }} min</p>
+        <p class="text-xs text-slate-500">{{ displayTable }} · hace {{ minutes }} min</p>
       </div>
       <span class="badge" :class="statusClass">{{ statusLabel }}</span>
     </div>
 
-    <ul class="mt-3 space-y-1.5">
-      <li v-for="(it, idx) in order.items" :key="idx" class="flex justify-between text-sm">
-        <span class="text-slate-300">
-          <span class="font-semibold text-neon-cyan">{{ it.quantity }}×</span> {{ it.name }}
-          <span v-if="it.notes" class="block text-xs text-amber-300/80">“{{ it.notes }}”</span>
-        </span>
-        <span class="text-slate-500">{{ formatMoney(it.subtotal) }}</span>
-      </li>
+    <ul class="mt-3 space-y-2">
+      <OrderItemLine v-for="(it, idx) in order.items" :key="idx" :item="it" show-price />
     </ul>
 
     <div class="mt-3 flex items-center justify-between border-t border-ink-700 pt-3">
@@ -50,6 +44,8 @@ import {
   elapsedMinutes,
 } from '@/shared/order-status';
 import { formatMoney } from '@/shared/format';
+import { formatTableLabel } from '@/shared/table-label';
+import OrderItemLine from '@/components/OrderItemLine.vue';
 
 const props = defineProps<{ order: Order; tableLabel?: string }>();
 defineEmits<{ advance: [order: Order, status: OrderStatus] }>();
@@ -60,5 +56,5 @@ const minutes = computed(() => elapsedMinutes(props.order.createdAt));
 const nextStatus = computed(() => NEXT_STATUS[props.order.status]);
 const nextLabel = computed(() => (nextStatus.value ? ORDER_STATUS_LABEL[nextStatus.value] : ''));
 const canCancel = computed(() => ['pending', 'accepted', 'preparing'].includes(props.order.status));
-const displayTable = computed(() => props.tableLabel ?? props.order.tableId.slice(-4));
+const displayTable = computed(() => props.tableLabel ?? formatTableLabel(props.order));
 </script>

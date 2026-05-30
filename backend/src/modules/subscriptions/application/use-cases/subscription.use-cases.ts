@@ -44,6 +44,15 @@ export class PlanFeaturesService {
     const plan = await this.getPlanForBusiness(businessId);
     return plan?.limits[key] ?? null;
   }
+
+  async assertCanAddUser(businessId: string, currentUserCount: number): Promise<void> {
+    const maxUsers = await this.getLimit(businessId, 'maxUsers');
+    if (maxUsers != null && currentUserCount >= maxUsers) {
+      throw new ForbiddenDomainException(
+        `Tu plan permite un máximo de ${maxUsers} usuarios. Actualiza a Pro para agregar más.`,
+      );
+    }
+  }
 }
 
 @Injectable()

@@ -4,6 +4,11 @@ import { Permission, Role } from '@shared/enums';
 import { PLAN_FEATURE_LABELS, PlanFeature } from '@shared/enums/plan-feature.enum';
 import { ChangePlanDto, ChangePlanUseCase } from '../../application/use-cases/change-plan.use-case';
 import {
+  CreateCheckoutDto,
+  CreateCheckoutUseCase,
+} from '../../application/use-cases/create-checkout.use-case';
+import { MercadoPagoWebhookUseCase } from '../../application/use-cases/mercadopago-webhook.use-case';
+import {
   GetBusinessSubscriptionUseCase,
   ListPlansUseCase,
 } from '../../application/use-cases/subscription.use-cases';
@@ -47,6 +52,7 @@ export class SubscriptionsController {
   constructor(
     private readonly getSubscription: GetBusinessSubscriptionUseCase,
     private readonly changePlan: ChangePlanUseCase,
+    private readonly createCheckout: CreateCheckoutUseCase,
   ) {}
 
   @Get('current')
@@ -57,6 +63,18 @@ export class SubscriptionsController {
       subscription: data.subscription,
       plan: presentPlan(data.plan),
     };
+  }
+
+  @Post('checkout')
+  @Roles(Role.OWNER)
+  @RequirePermissions(Permission.BUSINESS_MANAGE)
+  async checkout(
+    @CurrentUser('userId') ownerId: string,
+    @CurrentUser('businessId') businessId: string,
+    @CurrentUser('email') ownerEmail: string,
+    @Body() dto: CreateCheckoutDto,
+  ) {
+    return this.createCheckout.execute(businessId, ownerId, dto, ownerEmail);
   }
 
   @Post('change-plan')

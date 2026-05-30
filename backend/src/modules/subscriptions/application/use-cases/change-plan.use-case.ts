@@ -74,22 +74,57 @@ export class ChangePlanUseCase {
     return { subscription: sub.toPrimitives(), plan: plan.toPrimitives() };
   }
 
-  /** Crea suscripción trial al registrar un negocio nuevo. */
+  /** Activa un plan tras confirmar el pago (webhook Mercado Pago). Sin periodo de prueba. */
+  async activatePaidPlan(businessId: string, dto: ChangePlanDto) {
+    const business = await this.businesses.findById(businessId);
+    if (!business) throw new EntityNotFoundException('Negocio', businessId);
+
+    const plan = await this.plans.findBySlug(dto.planSlug);
+    if (!plan) throw new EntityNotFoundException('Plan', dto.planSlug);
+
+    const periodEnd = this.calcPeriodEnd(dto.billingCycle, 0);
+    let sub = await this.subscriptions.findByBusiness(businessId);
+
+    if (!sub) {
+      sub = await this.subscriptions.create(
+        new Subscription({
+          id: uuid(),
+          businessId,
+          planId: plan.id,
+          status: SubscriptionRecordStatus.ACTIVE,
+          billingCycle: dto.billingCycle,
+          currentPeriodStart: new Date(),
+          currentPeriodEnd: periodEnd,
+          canceledAt: null,
+        }),
+      );
+    } else {
+      sub.changePlan(plan.id, periodEnd);
+      sub = await this.subscriptions.update(sub);
+    }
+
+    business.setSubscription(SubscriptionStatus.ACTIVE);
+    await this.businesses.update(business);
+
+    return { subscription: sub.toPrimitives(), plan: plan.toPrimitives() };
+  }
+
+  /** Asigna plan Basic con periodo de prueba al registrar un negocio nuevo. */
   async assignTrial(businessId: string): Promise<void> {
-    const trial = await this.plans.findBySlug('trial');
-    if (!trial) return;
+    const basic = await this.plans.findBySlug('basic');
+    if (!basic) return;
 
     const existing = await this.subscriptions.findByBusiness(businessId);
     if (existing) return;
 
     const end = new Date();
-    end.setDate(end.getDate() + (trial.trialDays || 14));
+    end.setDate(end.getDate() + (basic.trialDays || 14));
 
     await this.subscriptions.create(
       new Subscription({
         id: uuid(),
         businessId,
-        planId: trial.id,
+        planId: basic.id,
         status: SubscriptionRecordStatus.TRIALING,
         billingCycle: BillingCycle.MONTHLY,
         currentPeriodStart: new Date(),

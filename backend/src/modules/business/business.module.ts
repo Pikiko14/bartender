@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsersModule } from '@modules/users/users.module';
 import { BUSINESS_REPOSITORY } from './domain/repositories/business.repository';
@@ -12,7 +12,7 @@ import { BusinessModel, BusinessSchema } from './infrastructure/schemas/business
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: BusinessModel.name, schema: BusinessSchema }]),
-    UsersModule,
+    forwardRef(() => UsersModule),
   ],
   controllers: [BusinessController],
   providers: [

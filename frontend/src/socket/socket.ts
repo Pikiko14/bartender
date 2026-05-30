@@ -19,6 +19,7 @@ export const SocketEvents = {
   MUSIC_SHARE_VIEWER_READY: 'music.share.viewer-ready',
   MUSIC_PLAYBACK_CONTROL: 'music.playback.control',
   TABLE_UPDATED: 'table.updated',
+  TABLE_SESSION_CLOSED: 'table.session.closed',
 } as const;
 
 export type PlaybackSyncPayload = {

@@ -3,6 +3,7 @@ export interface YoutubePlayerTrack {
   id: string;
   youtubeId: string;
   title: string;
+  channelTitle?: string | null;
 }
 
 export interface YoutubePlayerInstance {

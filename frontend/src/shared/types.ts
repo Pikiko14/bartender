@@ -78,6 +78,7 @@ export interface OrderItem {
   quantity: number;
   preparationArea: PreparationArea;
   notes: string | null;
+  image?: string | null;
   subtotal: number;
 }
 
@@ -85,7 +86,10 @@ export interface Order {
   id: string;
   businessId: string;
   tableId: string;
+  tableNumber?: number;
+  tableName?: string;
   sessionId: string;
+  tableSessionId?: string;
   items: OrderItem[];
   total: number;
   areas: PreparationArea[];
@@ -127,7 +131,48 @@ export interface GuestSession {
   sessionId: string;
   businessId: string;
   tableId: string;
+  tableSessionId: string;
   createdAt: string;
+}
+
+export type TableSessionStatus = 'open' | 'closed';
+
+export interface TableSession {
+  id: string;
+  businessId: string;
+  tableId: string;
+  status: TableSessionStatus;
+  openedAt: string;
+  closedAt: string | null;
+}
+
+export interface TableBillLine {
+  menuItemId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  image: string | null;
+}
+
+export interface TableBill {
+  tableSession: TableSession;
+  tableId: string;
+  tableName?: string;
+  tableNumber?: number;
+  orders: Order[];
+  lines: TableBillLine[];
+  orderCount: number;
+  total: number;
+  closed?: boolean;
+}
+
+export interface ScanResult {
+  session: GuestSession;
+  business: Business;
+  table: TableEntity;
+  tableSession: TableSession;
+  resumed: boolean;
 }
 
 export interface PlanFeatureLabel {
@@ -151,6 +196,7 @@ export interface Plan {
   };
   trialDays: number;
   highlighted: boolean;
+  active?: boolean;
 }
 
 export interface BusinessSubscription {

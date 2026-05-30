@@ -40,6 +40,18 @@ export class VoteSongDto {
   sessionId!: string;
 }
 
+export class FindAlternativeDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(200)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  artist?: string;
+}
+
 export class SetPriorityDto {
   @Type(() => Number)
   @IsInt()

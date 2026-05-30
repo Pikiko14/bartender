@@ -61,13 +61,22 @@ export class PlaybackUseCase {
 
   /** Reproduce de inmediato una canción aprobada de la cola. */
   async playRequest(businessId: string, requestId: string): Promise<MusicRequestView> {
+    return this.syncNowPlaying(businessId, requestId, { previousAsSkipped: true });
+  }
+
+  /**
+   * Marca la pista que suena en pantalla DJ/TV como `playing` en BD.
+   * Usado cuando el reproductor avanza automáticamente.
+   */
+  async syncNowPlaying(
+    businessId: string,
+    requestId: string,
+    options: { previousAsSkipped?: boolean } = {},
+  ): Promise<MusicRequestView> {
     const request = await this.requests.findById(requestId);
     if (!request) throw new EntityNotFoundException('Canción', requestId);
     if (request.businessId !== businessId) {
       throw new ForbiddenDomainException('La canción no pertenece a tu negocio.');
-    }
-    if (request.status !== MusicRequestStatus.APPROVED) {
-      throw new BusinessRuleViolationException('Solo puedes reproducir canciones aprobadas en cola.');
     }
 
     const current = await this.requests.findNowPlaying(businessId);
@@ -76,12 +85,21 @@ export class PlaybackUseCase {
     }
 
     if (current) {
-      current.skip();
-      const skipped = await this.requests.update(current);
-      this.realtime.emitToBusiness(
-        businessId,
-        SocketEvents.MUSIC_SKIPPED,
-        presentMusicRequest(skipped),
+      if (options.previousAsSkipped) current.skip();
+      else current.markPlayed();
+      await this.requests.update(current);
+      if (options.previousAsSkipped) {
+        this.realtime.emitToBusiness(
+          businessId,
+          SocketEvents.MUSIC_SKIPPED,
+          presentMusicRequest(current),
+        );
+      }
+    }
+
+    if (request.status !== MusicRequestStatus.APPROVED) {
+      throw new BusinessRuleViolationException(
+        'Solo se puede marcar como reproduciendo una canción aprobada en cola.',
       );
     }
 

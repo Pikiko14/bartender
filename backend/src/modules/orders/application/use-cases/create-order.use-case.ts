@@ -10,11 +10,16 @@ import {
   MenuItemRepository,
 } from '@modules/menu/domain/repositories/menu.repository';
 import { GuestSessionService } from '@modules/sessions/application/guest-session.service';
+import {
+  TABLE_SESSION_REPOSITORY,
+  TableSessionRepository,
+} from '@modules/tables/domain/repositories/table-session.repository';
 import { Order } from '../../domain/entities/order.entity';
 import { OrderItem } from '../../domain/value-objects/order-item.vo';
 import { ORDER_REPOSITORY, OrderRepository } from '../../domain/repositories/order.repository';
 import { CreateOrderDto } from '../dto/create-order.dto';
 import { presentOrder, presentOrderForArea } from '../presenters/order.presenter';
+import { OrderTableEnricher } from '../services/order-table.enricher';
 
 @Injectable()
 export class CreateOrderUseCase {
@@ -25,13 +30,21 @@ export class CreateOrderUseCase {
   constructor(
     @Inject(ORDER_REPOSITORY) private readonly orders: OrderRepository,
     @Inject(MENU_ITEM_REPOSITORY) private readonly menuItems: MenuItemRepository,
+    @Inject(TABLE_SESSION_REPOSITORY) private readonly tableSessions: TableSessionRepository,
     private readonly sessions: GuestSessionService,
     private readonly realtime: RealtimeService,
     private readonly redis: RedisService,
+    private readonly tableEnricher: OrderTableEnricher,
   ) {}
 
   async execute(dto: CreateOrderDto) {
     const session = await this.sessions.get(dto.sessionId);
+    const tableSession = await this.tableSessions.findById(session.tableSessionId);
+    if (!tableSession?.isOpen()) {
+      throw new BusinessRuleViolationException(
+        'La mesa está cerrada. Escanea el QR de nuevo para abrir una nueva cuenta.',
+      );
+    }
     await this.assertNotFlooding(dto.sessionId);
 
     const requestedIds = dto.items.map((i) => i.menuItemId);
@@ -55,6 +68,7 @@ export class CreateOrderUseCase {
         quantity: line.quantity,
         preparationArea: menuItem.preparationArea,
         notes: line.notes ?? null,
+        image: menuItem.toPrimitives().image,
       });
     });
 
@@ -63,18 +77,19 @@ export class CreateOrderUseCase {
       businessId: session.businessId,
       tableId: session.tableId,
       sessionId: session.sessionId,
+      tableSessionId: session.tableSessionId,
       items: orderItems,
       status: OrderStatus.PENDING,
       notes: dto.notes ?? null,
     });
 
     const created = await this.orders.create(order);
-    this.broadcastCreated(created);
-    return presentOrder(created);
+    await this.broadcastCreated(created);
+    return this.tableEnricher.enrichOne(presentOrder(created));
   }
 
-  private broadcastCreated(order: Order): void {
-    const view = presentOrder(order);
+  private async broadcastCreated(order: Order): Promise<void> {
+    const view = await this.tableEnricher.enrichOne(presentOrder(order));
     this.realtime.emitToBusiness(order.businessId, SocketEvents.ORDER_CREATED, view);
     this.realtime.emitToTable(order.tableId, SocketEvents.ORDER_CREATED, view);
 
@@ -82,14 +97,14 @@ export class CreateOrderUseCase {
       this.realtime.emitToKitchen(
         order.businessId,
         SocketEvents.KITCHEN_ORDER_CREATED,
-        presentOrderForArea(order, PreparationArea.KITCHEN),
+        await this.tableEnricher.enrichOne(presentOrderForArea(order, PreparationArea.KITCHEN)),
       );
     }
     if (order.areas.includes(PreparationArea.BAR)) {
       this.realtime.emitToBar(
         order.businessId,
         SocketEvents.BAR_ORDER_CREATED,
-        presentOrderForArea(order, PreparationArea.BAR),
+        await this.tableEnricher.enrichOne(presentOrderForArea(order, PreparationArea.BAR)),
       );
     }
   }

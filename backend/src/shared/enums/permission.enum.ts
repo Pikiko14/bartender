@@ -20,6 +20,7 @@ export enum Permission {
   // Tables
   TABLE_MANAGE = 'table:manage',
   TABLE_VIEW = 'table:view',
+  TABLE_CLOSE = 'table:close',
 
   // Orders
   ORDER_CREATE = 'order:create',
@@ -50,6 +51,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.MENU_VIEW,
     Permission.TABLE_MANAGE,
     Permission.TABLE_VIEW,
+    Permission.TABLE_CLOSE,
     Permission.ORDER_VIEW,
     Permission.ORDER_UPDATE_STATUS,
     Permission.ORDER_CANCEL,
@@ -65,6 +67,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.ORDER_CREATE,
     Permission.ORDER_VIEW,
     Permission.ORDER_UPDATE_STATUS,
+    Permission.TABLE_CLOSE,
   ],
   [Role.DJ]: [Permission.MUSIC_MODERATE, Permission.MUSIC_PLAYBACK],
   [Role.CASHIER]: [
@@ -72,6 +75,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.ORDER_UPDATE_STATUS,
     Permission.MENU_VIEW,
     Permission.TABLE_VIEW,
+    Permission.TABLE_CLOSE,
   ],
   [Role.KITCHEN]: [Permission.KITCHEN_VIEW, Permission.ORDER_VIEW, Permission.ORDER_UPDATE_STATUS],
   [Role.BAR]: [Permission.BAR_VIEW, Permission.ORDER_VIEW, Permission.ORDER_UPDATE_STATUS],

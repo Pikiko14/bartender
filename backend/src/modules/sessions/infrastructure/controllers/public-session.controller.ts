@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { IsString } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 import { Public } from '@shared/decorators';
 import { GuestSessionService } from '../../application/guest-session.service';
 import { ScanQrUseCase } from '../../application/use-cases/scan-qr.use-case';
@@ -11,6 +11,10 @@ class ScanDto {
 
   @IsString()
   tableSlug!: string;
+
+  @IsOptional()
+  @IsString()
+  resumeSessionId?: string;
 }
 
 @Public()
@@ -24,7 +28,7 @@ export class PublicSessionController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('scan')
   scan(@Body() dto: ScanDto) {
-    return this.scanQr.execute(dto.businessSlug, dto.tableSlug);
+    return this.scanQr.execute(dto.businessSlug, dto.tableSlug, dto.resumeSessionId);
   }
 
   @Get(':sessionId')

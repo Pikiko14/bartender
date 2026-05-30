@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { musicApi, publicApi } from '@/services/api';
 import { realtime, SocketEvents, type PlaybackSyncPayload } from '@/socket/socket';
 import { dispatchPlaybackSync } from '@/shared/playback-sync';
-import { broadcastNowPlaying } from '@/shared/music-sync-bus';
+import { broadcastNowPlaying, broadcastQueueState } from '@/shared/music-sync-bus';
 import type { MusicQueue, MusicRequest } from '@/shared/types';
 
 let playbackRelayReady = false;
@@ -20,21 +20,27 @@ export const useMusicStore = defineStore('music', {
     nowPlaying: null as MusicRequest | null,
     queue: [] as MusicRequest[],
     pending: [] as MusicRequest[],
+    businessId: null as string | null,
     bound: false,
   }),
   actions: {
     async fetchQueue() {
       const q = await musicApi.queue();
       this.applyQueue(q);
+      return q;
     },
     async fetchPublicQueue(businessSlug: string) {
       const q = await publicApi.publicQueue(businessSlug);
       this.applyQueue({ ...q, pending: [] });
+      return q;
     },
     applyQueue(q: MusicQueue) {
       this.nowPlaying = q.nowPlaying;
       this.queue = q.queue;
       this.pending = q.pending ?? [];
+    },
+    broadcastIfBound() {
+      if (this.businessId) this.broadcastState(this.businessId);
     },
     async approve(id: string) {
       await musicApi.approve(id);
@@ -44,25 +50,90 @@ export const useMusicStore = defineStore('music', {
     },
     async playNext() {
       const playing = await musicApi.playNext();
-      this.nowPlaying = playing;
+      if (playing !== undefined) this.nowPlaying = playing;
       await this.fetchQueue();
+      this.broadcastIfBound();
     },
     async skip() {
       const playing = await musicApi.skip();
-      this.nowPlaying = playing;
+      if (playing !== undefined) this.nowPlaying = playing;
       await this.fetchQueue();
+      this.broadcastIfBound();
     },
     async playRequest(id: string) {
       const playing = await musicApi.playRequest(id);
       this.nowPlaying = playing;
       await this.fetchQueue();
+      this.broadcastIfBound();
+    },
+
+    async playNextPublic(businessSlug: string) {
+      const playing = await publicApi.publicPlayNext(businessSlug);
+      if (playing !== undefined) this.nowPlaying = playing;
+      await this.fetchPublicQueue(businessSlug);
+      this.broadcastIfBound();
+    },
+
+    async playRequestPublic(businessSlug: string, id: string) {
+      const playing = await publicApi.publicPlayRequest(businessSlug, id);
+      this.nowPlaying = playing;
+      await this.fetchPublicQueue(businessSlug);
+      this.broadcastIfBound();
+    },
+
+    async syncPlaying(id: string) {
+      const playing = await musicApi.syncPlaying(id);
+      this.nowPlaying = playing;
+      await this.fetchQueue();
+      this.broadcastIfBound();
+      return playing;
+    },
+
+    async syncPlayingPublic(businessSlug: string, id: string) {
+      const playing = await publicApi.publicSyncPlaying(businessSlug, id);
+      this.nowPlaying = playing;
+      await this.fetchPublicQueue(businessSlug);
+      this.broadcastIfBound();
+      return playing;
+    },
+
+    /** Marca en backend la pista que suena (status → playing). */
+    async syncLiveTrack(
+      liveRequestId: string,
+      opts: { businessSlug?: string; useStaffApi?: boolean },
+    ) {
+      const synced =
+        this.nowPlaying?.id === liveRequestId && this.nowPlaying?.status === 'playing';
+      if (synced) return;
+
+      const { businessSlug, useStaffApi } = opts;
+
+      if (useStaffApi) {
+        await this.syncPlaying(liveRequestId);
+        return;
+      }
+      if (businessSlug) {
+        await this.syncPlayingPublic(businessSlug, liveRequestId);
+      }
     },
 
     sendPlaybackControl(businessId: string, cmd: PlaybackSyncPayload) {
       realtime.emitPlaybackControl(businessId, cmd);
     },
 
+    /** Propaga el estado de cola a otras pestañas (admin ↔ DJ). */
+    broadcastState(businessId: string) {
+      const snapshot: MusicQueue = {
+        nowPlaying: this.nowPlaying,
+        queue: this.queue,
+        pending: this.pending,
+      };
+      broadcastQueueState(businessId, snapshot);
+      broadcastNowPlaying(businessId, this.nowPlaying);
+    },
+
     bindBusiness(businessId: string) {
+      this.businessId = businessId;
       ensurePlaybackRelay();
       realtime.joinBusiness(businessId);
       if (this.bound) return;
@@ -71,14 +142,20 @@ export const useMusicStore = defineStore('music', {
       realtime.on<MusicRequest>(SocketEvents.MUSIC_REQUESTED, (req) => {
         if (!this.pending.find((p) => p.id === req.id)) this.pending.unshift(req);
       });
-      realtime.on<MusicQueue>(SocketEvents.MUSIC_QUEUE_UPDATED, (q) => this.applyQueue(q));
+      realtime.on<MusicQueue>(SocketEvents.MUSIC_QUEUE_UPDATED, (q) => {
+        this.applyQueue(q);
+      });
       realtime.on<MusicRequest | null>(SocketEvents.MUSIC_PLAYING, (req) => {
         this.nowPlaying = req;
+        void this.fetchQueue();
+      });
+      realtime.on(SocketEvents.MUSIC_SKIPPED, () => {
+        void this.fetchQueue();
       });
     },
 
     notifyPlayback(businessId: string) {
-      broadcastNowPlaying(businessId, this.nowPlaying);
+      this.broadcastState(businessId);
     },
   },
 });

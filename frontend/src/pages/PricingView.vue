@@ -22,7 +22,7 @@
     </div>
 
     <div v-if="loading" class="mt-12 text-center text-slate-500">Cargando planes…</div>
-    <div v-else class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+    <div v-else class="mt-10 grid gap-6 md:grid-cols-2">
       <div
         v-for="plan in plans"
         :key="plan.id"
@@ -58,7 +58,9 @@ const cycle = ref<'monthly' | 'yearly'>('monthly');
 
 function price(plan: Plan) {
   const n = cycle.value === 'monthly' ? plan.priceMonthly : plan.priceYearly;
-  if (plan.slug === 'trial') return '14 días gratis';
+  if (plan.trialDays > 0 && plan.slug === 'basic') {
+    return `${formatMoney(n)}/${cycle.value === 'monthly' ? 'mes' : 'año'} · ${plan.trialDays} días de prueba`;
+  }
   return n === 0 ? 'Gratis' : `${formatMoney(n)}/${cycle.value === 'monthly' ? 'mes' : 'año'}`;
 }
 

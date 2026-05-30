@@ -7,14 +7,6 @@
       </div>
       <div class="flex flex-wrap gap-2">
         <a
-          v-if="tvShareUrl"
-          :href="tvShareUrl"
-          target="_blank"
-          class="btn-ghost text-sm text-neon-cyan"
-        >
-          📺 Modo TV
-        </a>
-        <a
           v-if="shareUrl"
           :href="shareUrl"
           target="_blank"
@@ -135,7 +127,8 @@ import { useAuthStore } from '@/stores/auth.store';
 import { useBusinessStore } from '@/stores/business.store';
 import { apiErrorMessage } from '@/services/http';
 import { useToast } from '@/composables/useToast';
-import { djShareUrl, djTvUrl } from '@/shared/dj-share';
+import { djShareUrl } from '@/shared/dj-share';
+import { onMusicSyncBroadcast } from '@/shared/music-sync-bus';
 import { onPlaybackSync } from '@/shared/playback-sync';
 
 const music = useMusicStore();
@@ -146,10 +139,11 @@ const playingId = ref<string | null>(null);
 const isPlaying = ref(true);
 const busy = ref(false);
 let unregPlaybackSync: (() => void) | undefined;
+let unregMusicSync: (() => void) | undefined;
+let queuePollTimer: ReturnType<typeof setInterval> | undefined;
 
 const businessSlug = computed(() => business.current?.slug ?? '');
 const shareUrl = computed(() => (businessSlug.value ? djShareUrl(businessSlug.value) : ''));
-const tvShareUrl = computed(() => (businessSlug.value ? djTvUrl(businessSlug.value) : ''));
 
 function togglePlayback() {
   const businessId = auth.user?.businessId;
@@ -235,6 +229,36 @@ onMounted(async () => {
   if (auth.user?.businessId) music.bindBusiness(auth.user.businessId);
   await music.fetchQueue().catch((e) => toast.error(apiErrorMessage(e)));
 
+  const businessId = auth.user?.businessId;
+  if (businessId) {
+    unregMusicSync = onMusicSyncBroadcast((msg) => {
+      if (msg.businessId !== businessId) return;
+      if (msg.type === 'queue-updated') {
+        music.applyQueue(msg.queue);
+        return;
+      }
+      music.nowPlaying = msg.track;
+      void music.fetchQueue().catch(() => undefined);
+    });
+
+    const refreshQueue = () => {
+      void music.fetchQueue().catch(() => undefined);
+    };
+
+    queuePollTimer = setInterval(() => {
+      if (document.hidden) return;
+      refreshQueue();
+    }, 2000);
+
+    document.addEventListener('visibilitychange', refreshQueue);
+    window.addEventListener('focus', refreshQueue);
+
+    onBeforeUnmount(() => {
+      document.removeEventListener('visibilitychange', refreshQueue);
+      window.removeEventListener('focus', refreshQueue);
+    });
+  }
+
   unregPlaybackSync = onPlaybackSync((cmd) => {
     if (music.nowPlaying?.youtubeId === cmd.youtubeId) {
       isPlaying.value = cmd.action === 'play';
@@ -244,5 +268,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   unregPlaybackSync?.();
+  unregMusicSync?.();
+  if (queuePollTimer) clearInterval(queuePollTimer);
 });
 </script>

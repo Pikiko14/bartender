@@ -28,9 +28,10 @@ export class OrderMongoRepository extends OrderRepository {
       businessId: new Types.ObjectId(filter.businessId),
     };
     if (filter.statuses?.length) query.status = { $in: filter.statuses };
-    if (filter.area) query.areas = filter.area;
+    if (filter.area) query['items.preparationArea'] = filter.area;
     if (filter.tableId) query.tableId = new Types.ObjectId(filter.tableId);
     if (filter.sessionId) query.sessionId = filter.sessionId;
+    if (filter.tableSessionId) query.tableSessionId = filter.tableSessionId;
     if (filter.from || filter.to) {
       query.createdAt = {};
       if (filter.from) (query.createdAt as Record<string, Date>).$gte = filter.from;

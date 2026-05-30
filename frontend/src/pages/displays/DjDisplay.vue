@@ -7,12 +7,15 @@
         dj-mode
         fill
         :show-progress="true"
-        :sync-to-backend="false"
+        :sync-to-backend="playerSyncBackend"
         :business-id="syncBusinessId"
         :current-track="currentTrack"
         :next-track="nextTrack"
         class="h-full min-h-0 flex-1"
+        @need-sync="onPlayerNeedSync"
         @playing="onPlayerPlaying"
+        @error="onPlayerError"
+        @external-fallback="onPlayerExternalFallback"
       />
       <div
         class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-6 pb-6 pt-16"
@@ -31,6 +34,13 @@
       <p>Esperando reproducción desde la pantalla DJ…</p>
       <p class="text-xs text-slate-600">Inicia la cola en el panel de música o en la ventana DJ.</p>
     </div>
+    <button
+      type="button"
+      class="absolute bottom-4 left-4 z-10 rounded-lg bg-black/60 px-3 py-2 text-xs text-white hover:bg-black/80"
+      @click="exitTvMode"
+    >
+      ← Pantalla DJ
+    </button>
     <button
       type="button"
       class="absolute bottom-4 right-4 z-10 rounded-lg bg-black/60 px-3 py-2 text-xs text-white hover:bg-black/80"
@@ -72,6 +82,13 @@
     </div>
     <button
       type="button"
+      class="absolute bottom-4 left-4 z-10 rounded-lg bg-black/60 px-3 py-2 text-xs text-white hover:bg-black/80"
+      @click="exitTvMode"
+    >
+      ← Pantalla DJ
+    </button>
+    <button
+      type="button"
       class="absolute bottom-4 right-4 z-10 rounded-lg bg-black/60 px-3 py-2 text-xs text-white hover:bg-black/80"
       @click="toggleFullscreen"
     >
@@ -93,12 +110,11 @@
       </div>
       <div class="flex shrink-0 items-center gap-2">
         <button
-          v-if="isShared && syncBusinessId && !screenShare.sharing.value"
           type="button"
           class="btn-cyan px-2 py-1 text-xs"
-          @click="openTvMode"
+          @click="enterTvMode"
         >
-          📺 URL TV
+          📺 Modo TV
         </button>
         <span v-if="screenShare.sharing.value" class="badge bg-red-500/20 text-red-300">● EN TV</span>
         <span v-if="!isShared" class="badge bg-emerald-500/15 text-emerald-300">● dual player</span>
@@ -114,20 +130,20 @@
     </header>
 
     <div
-      v-if="!isTvMode && effectiveSlug && syncBusinessId"
+      v-if="effectiveSlug && syncBusinessId"
       class="mb-4 rounded-lg border border-neon-cyan/30 bg-ink-900/80 p-4"
     >
-      <p class="font-medium text-slate-200">📺 Ver en TV</p>
+      <p class="font-medium text-slate-200">📺 Ver en otra pantalla (TV, proyector…)</p>
       <p class="mt-2 text-xs text-slate-400">
-        Abre la URL en la TV/smart TV y el
-        <strong class="text-slate-300">video se reproduce directamente</strong>
-        (sincronizado con la pantalla DJ).
+        Usa <strong class="text-slate-300">Modo TV</strong> arriba en esta ventana, o abre esta URL en el
+        dispositivo externo (video sincronizado con la DJ).
       </p>
       <p class="mt-2 break-all text-xs">
         <a :href="tvUrl" target="_blank" class="text-neon-cyan hover:underline">{{ tvUrl }}</a>
       </p>
       <div class="mt-3 flex flex-wrap gap-2">
-        <a :href="tvUrl" target="_blank" class="btn-cyan text-sm">↗ Abrir modo TV</a>
+        <button type="button" class="btn-cyan text-sm" @click="enterTvMode">📺 Activar modo TV aquí</button>
+        <a v-if="tvUrl" :href="tvUrl" target="_blank" class="btn-ghost text-sm">↗ Abrir en otra pestaña</a>
         <button type="button" class="btn-ghost text-xs" @click="copyTvLink">Copiar URL TV</button>
       </div>
 
@@ -177,13 +193,14 @@
       <YoutubeDualPlayer
         ref="playerRef"
         dj-mode
-        :sync-to-backend="!isShared"
+        :sync-to-backend="playerSyncBackend"
         :business-id="syncBusinessId"
         :current-track="currentTrack"
         :next-track="nextTrack"
-        @need-sync="syncWithBackend"
+        @need-sync="onPlayerNeedSync"
         @playing="onPlayerPlaying"
-        @error="onError"
+        @error="onPlayerError"
+        @external-fallback="onPlayerExternalFallback"
       />
       <div class="mt-4 flex items-end justify-between gap-4">
         <div class="min-w-0">
@@ -220,7 +237,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import YoutubeDualPlayer from '@/components/YoutubeDualPlayer.vue';
 import { useMusicStore } from '@/stores/music.store';
 import { useAuthStore } from '@/stores/auth.store';
@@ -231,11 +248,12 @@ import { apiErrorMessage } from '@/services/http';
 import { businessApi } from '@/services/api';
 import { useToast } from '@/composables/useToast';
 import { copyDjShareUrl, djTvCastUrl, djTvUrl } from '@/shared/dj-share';
-import { onNowPlayingBroadcast } from '@/shared/music-sync-bus';
+import { onMusicSyncBroadcast } from '@/shared/music-sync-bus';
 import type { MusicRequest } from '@/shared/types';
 import type { YoutubePlayerTrack } from '@/shared/youtube.types';
 
 const route = useRoute();
+const router = useRouter();
 const music = useMusicStore();
 const auth = useAuthStore();
 const business = useBusinessStore();
@@ -244,7 +262,6 @@ const playerRef = ref<InstanceType<typeof YoutubeDualPlayer> | null>(null);
 const castVideoRef = ref<HTMLVideoElement | null>(null);
 const castHasFrame = ref(false);
 const liveTrack = ref<YoutubePlayerTrack | null>(null);
-const syncing = ref(false);
 const businessName = ref('DJ');
 const tvBusinessId = ref('');
 
@@ -262,6 +279,28 @@ const tvCastUrl = computed(() => (effectiveSlug.value ? djTvCastUrl(effectiveSlu
 const syncBusinessId = computed(
   () => tvBusinessId.value || auth.user?.businessId || null,
 );
+
+/** Pantallas DJ/TV pueden sincronizar vía API staff o pública por slug. */
+const playerSyncBackend = computed(() => {
+  if (isTvCastMode.value) return false;
+  if (effectiveSlug.value) return true;
+  return !!auth.user?.businessId;
+});
+
+const useStaffPlaybackApi = computed(
+  () => !!auth.user?.businessId && syncBusinessId.value === auth.user.businessId,
+);
+
+function enterTvMode() {
+  router.push({ path: route.path, query: { ...route.query, tv: '1' } });
+}
+
+function exitTvMode() {
+  const q = { ...route.query } as Record<string, string | string[]>;
+  delete q.tv;
+  delete q.cast;
+  router.push({ path: route.path, query: q });
+}
 
 const screenShare = useDjScreenShare(() => syncBusinessId.value);
 
@@ -290,22 +329,43 @@ watch(receiving, (live) => {
 
 function toTrack(req: MusicRequest | null): YoutubePlayerTrack | null {
   if (!req) return null;
-  return { id: req.id, youtubeId: req.youtubeId, title: req.title };
+  return { id: req.id, youtubeId: req.youtubeId, title: req.title, channelTitle: req.channelTitle };
 }
 
-const currentTrack = computed(() => toTrack(music.nowPlaying));
-const nextTrack = computed(() => toTrack(music.queue[0] ?? null));
+/** Pista efectiva: el reproductor puede ir adelantado respecto al store hasta que la API confirme. */
+const effectiveNowPlayingId = computed(
+  () => liveTrack.value?.id ?? music.nowPlaying?.id ?? null,
+);
+
+const currentTrack = computed(() => {
+  if (liveTrack.value && liveTrack.value.id !== music.nowPlaying?.id) {
+    return liveTrack.value;
+  }
+  return toTrack(music.nowPlaying);
+});
+
+const nextTrack = computed(() => {
+  const currentId = effectiveNowPlayingId.value;
+  const candidate = music.queue.find((s) => s.id !== currentId) ?? null;
+  return toTrack(candidate);
+});
+
 const displayTitle = computed(
   () => liveTrack.value?.title ?? music.nowPlaying?.title ?? '',
 );
 const displayNext = computed(() => {
-  const liveId = liveTrack.value?.id;
+  const liveId = effectiveNowPlayingId.value;
   const candidate = music.queue.find((s) => s.id !== liveId) ?? null;
   return toTrack(candidate);
 });
 
 function onPlayerPlaying(track: YoutubePlayerTrack) {
   liveTrack.value = track;
+  const needsSync =
+    track.id !== music.nowPlaying?.id || music.nowPlaying?.status !== 'playing';
+  if (playerSyncBackend.value && needsSync) {
+    scheduleBackendSync();
+  }
 }
 
 watch(
@@ -315,42 +375,98 @@ watch(
   },
 );
 
+watch(
+  () => music.nowPlaying?.id,
+  (id, prev) => {
+    if (!id || id === prev || isTvCastMode.value) return;
+    if (isTvPlayerMode.value || isShared.value) {
+      void applyTrackToPlayer();
+    }
+  },
+);
+
+watch(
+  () => route.query.tv,
+  async (tv) => {
+    if (tv !== '1' && tv !== 'true') return;
+    if (isTvCastMode.value) return;
+    await nextTick();
+    await applyTrackToPlayer();
+    void document.documentElement.requestFullscreen?.().catch(() => undefined);
+  },
+);
+
 async function applyTrackToPlayer() {
   if (isTvCastMode.value) return;
   const track = toTrack(music.nowPlaying);
   if (!track) return;
+  if (playerRef.value?.isPlayingTrack(track.id)) return;
   await nextTick();
   playerRef.value?.switchToTrack(track);
   liveTrack.value = track;
 }
 
-watch(
-  () => music.nowPlaying?.id,
-  (id, prev) => {
-    if (!id || id === prev || isTvCastMode.value) return;
-    void applyTrackToPlayer();
-  },
-);
-
 let unregMusicBroadcast: (() => void) | undefined;
 let queuePollTimer: ReturnType<typeof setInterval> | undefined;
 
-async function syncWithBackend() {
-  if (isShared.value || isTvMode.value) return;
-  if (syncing.value) return;
-  syncing.value = true;
+async function refreshQueueAndApply() {
   try {
-    await music.playNext();
-    liveTrack.value = toTrack(music.nowPlaying);
+    if (useStaffPlaybackApi.value) {
+      await music.fetchQueue();
+    } else if (effectiveSlug.value) {
+      await music.fetchPublicQueue(effectiveSlug.value);
+    } else if (auth.user?.businessId) {
+      await music.fetchQueue();
+    }
+    await applyTrackToPlayer();
   } catch (e) {
     toast.error(apiErrorMessage(e));
-  } finally {
-    syncing.value = false;
   }
 }
 
-function onError() {
-  if (!isShared.value && !isTvMode.value) void syncWithBackend();
+async function onPlayerNeedSync() {
+  if (playerSyncBackend.value) {
+    scheduleBackendSync();
+    return;
+  }
+  await refreshQueueAndApply();
+}
+
+async function onPlayerError() {
+  if (playerSyncBackend.value) {
+    scheduleBackendSync();
+    return;
+  }
+  await refreshQueueAndApply();
+}
+
+async function onPlayerExternalFallback() {
+  if (playerSyncBackend.value) {
+    scheduleBackendSync();
+    return;
+  }
+  await refreshQueueAndApply();
+}
+
+let backendSyncChain: Promise<void> = Promise.resolve();
+
+/** Encola sincronización con el backend (evita saltos dobles y sync perdidos). */
+function scheduleBackendSync() {
+  if (!playerSyncBackend.value) return;
+  backendSyncChain = backendSyncChain.then(() => syncWithBackendInternal()).catch((e) => {
+    toast.error(apiErrorMessage(e));
+  });
+}
+
+async function syncWithBackendInternal() {
+  const live = liveTrack.value;
+  if (!live) return;
+
+  await music.syncLiveTrack(live.id, {
+    businessSlug: effectiveSlug.value,
+    useStaffApi: useStaffPlaybackApi.value,
+  });
+  liveTrack.value = toTrack(music.nowPlaying);
 }
 
 async function skip() {
@@ -371,11 +487,6 @@ async function copyTvLink() {
   if (!effectiveSlug.value) return;
   const ok = await copyDjShareUrl(effectiveSlug.value, true);
   toast[ok ? 'success' : 'error'](ok ? 'URL de TV copiada.' : 'No se pudo copiar.');
-}
-
-function openTvMode() {
-  if (!tvUrl.value) return;
-  window.open(tvUrl.value, '_blank');
 }
 
 async function startScreenShare() {
@@ -404,7 +515,11 @@ async function initSharedDisplay(slug: string) {
   businessName.value = biz.name;
   tvBusinessId.value = biz.id;
   music.bindBusiness(biz.id);
-  await music.fetchPublicQueue(slug);
+  if (useStaffPlaybackApi.value) {
+    await music.fetchQueue();
+  } else {
+    await music.fetchPublicQueue(slug);
+  }
   liveTrack.value = toTrack(music.nowPlaying);
 }
 
@@ -429,21 +544,29 @@ onMounted(async () => {
       await applyTrackToPlayer();
     }
 
-    unregMusicBroadcast = onNowPlayingBroadcast((msg) => {
+    unregMusicBroadcast = onMusicSyncBroadcast((msg) => {
       const bizId = syncBusinessId.value;
       if (!bizId || msg.businessId !== bizId) return;
-      music.nowPlaying = msg.track;
-      void applyTrackToPlayer();
+      if (msg.type === 'queue-updated') {
+        music.applyQueue(msg.queue);
+      } else {
+        music.nowPlaying = msg.track;
+      }
+      if (isTvPlayerMode.value || isShared.value) {
+        void applyTrackToPlayer();
+      }
     });
 
     queuePollTimer = setInterval(() => {
       if (isTvCastMode.value) return;
-      if ((isShared.value || isTvPlayerMode.value) && businessSlug.value) {
-        void music.fetchPublicQueue(businessSlug.value);
+      if (useStaffPlaybackApi.value) {
+        void music.fetchQueue();
+      } else if (effectiveSlug.value) {
+        void music.fetchPublicQueue(effectiveSlug.value);
       } else if (auth.user?.businessId) {
         void music.fetchQueue();
       }
-    }, 5000);
+    }, 3000);
 
     if (isTvPlayerMode.value || isTvCastMode.value) {
       void document.documentElement.requestFullscreen?.().catch(() => undefined);

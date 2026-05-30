@@ -9,6 +9,7 @@
           'bg-emerald-500/90 text-white': t.type === 'success',
           'bg-red-500/90 text-white': t.type === 'error',
           'bg-ink-700/90 text-slate-100': t.type === 'info',
+          'bg-amber-500/90 text-ink-950': t.type === 'warning',
         }"
       >
         {{ t.message }}

@@ -66,7 +66,7 @@
             step="0.01"
             min="0"
             class="input"
-            placeholder="Precio €"
+            placeholder="Precio (COP)"
             required
           />
           <select v-model="itemForm.categoryId" class="input" required>
@@ -109,7 +109,7 @@
                   {{ it.preparationArea === 'BAR' ? 'Barra' : 'Cocina' }}
                 </span>
               </div>
-              <div class="flex items-center gap-3">
+              <div class="flex shrink-0 items-center gap-2">
                 <button
                   class="text-xs text-slate-400 hover:text-slate-200"
                   @click="toggle(it.id, !it.available)"
@@ -117,18 +117,53 @@
                   {{ it.available ? 'Disponible' : 'Agotado' }}
                 </button>
                 <span class="text-slate-400">{{ formatMoney(it.price) }}</span>
+                <button
+                  class="btn-ghost px-2 py-1 text-xs"
+                  @click="startEditItem(it)"
+                >
+                  Editar
+                </button>
                 <button class="text-red-400 hover:text-red-300" @click="menu.removeItem(it.id)">
                   ✕
                 </button>
               </div>
             </div>
-            <div class="mt-2">
-              <ImageUpload
-                :model-value="it.image"
-                :alt="it.name"
-                @update:model-value="updateItemImage(it.id, $event)"
+
+            <form
+              v-if="editingItemId === it.id"
+              class="mt-3 grid gap-2 border-t border-ink-700 pt-3 sm:grid-cols-2"
+              @submit.prevent="saveEditItem"
+            >
+              <input v-model="editForm.name" class="input" placeholder="Nombre" required />
+              <input
+                v-model.number="editForm.price"
+                type="number"
+                step="0.01"
+                min="0"
+                class="input"
+                placeholder="Precio (COP)"
+                required
               />
-            </div>
+              <select v-model="editForm.categoryId" class="input" required>
+                <option v-for="c in menu.categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+              </select>
+              <select v-model="editForm.preparationArea" class="input">
+                <option value="KITCHEN">Cocina</option>
+                <option value="BAR">Barra</option>
+              </select>
+              <input
+                v-model="editForm.description"
+                class="input sm:col-span-2"
+                placeholder="Descripción (opcional)"
+              />
+              <div class="sm:col-span-2">
+                <ImageUpload v-model="editForm.image" :alt="editForm.name || 'Producto'" />
+              </div>
+              <div class="flex gap-2 sm:col-span-2">
+                <button type="submit" class="btn-primary text-sm">Guardar</button>
+                <button type="button" class="btn-ghost text-sm" @click="cancelEditItem">Cancelar</button>
+              </div>
+            </form>
           </div>
         </div>
       </div>
@@ -137,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive } from 'vue';
+import { onMounted, reactive, ref } from 'vue';
 import ImageUpload from '@/components/ImageUpload.vue';
 import MenuImage from '@/components/MenuImage.vue';
 import { useMenuStore } from '@/stores/menu.store';
@@ -145,6 +180,7 @@ import { formatMoney } from '@/shared/format';
 import { categoryIcon } from '@/shared/menu-icons';
 import { apiErrorMessage } from '@/services/http';
 import { useToast } from '@/composables/useToast';
+import type { MenuItem } from '@/shared/types';
 
 const menu = useMenuStore();
 const toast = useToast();
@@ -158,6 +194,48 @@ const itemForm = reactive({
   description: '',
   image: null as string | null,
 });
+
+const editingItemId = ref<string | null>(null);
+const editForm = reactive({
+  name: '',
+  price: 0,
+  categoryId: '',
+  preparationArea: 'BAR' as 'BAR' | 'KITCHEN',
+  description: '',
+  image: null as string | null,
+});
+
+function startEditItem(item: MenuItem) {
+  editingItemId.value = item.id;
+  editForm.name = item.name;
+  editForm.price = item.price;
+  editForm.categoryId = item.categoryId;
+  editForm.preparationArea = item.preparationArea;
+  editForm.description = item.description ?? '';
+  editForm.image = item.image;
+}
+
+function cancelEditItem() {
+  editingItemId.value = null;
+}
+
+async function saveEditItem() {
+  if (!editingItemId.value) return;
+  try {
+    await menu.updateItem(editingItemId.value, {
+      name: editForm.name,
+      price: editForm.price,
+      categoryId: editForm.categoryId,
+      preparationArea: editForm.preparationArea,
+      description: editForm.description || undefined,
+      image: editForm.image,
+    });
+    editingItemId.value = null;
+    toast.success('Producto actualizado.');
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
+  }
+}
 
 async function addCategory() {
   try {
@@ -202,15 +280,6 @@ async function addItem() {
     itemForm.description = '';
     itemForm.image = null;
     toast.success('Producto creado.');
-  } catch (e) {
-    toast.error(apiErrorMessage(e));
-  }
-}
-
-async function updateItemImage(id: string, image: string | null) {
-  try {
-    await menu.updateItem(id, { image });
-    toast.success('Imagen del producto actualizada.');
   } catch (e) {
     toast.error(apiErrorMessage(e));
   }

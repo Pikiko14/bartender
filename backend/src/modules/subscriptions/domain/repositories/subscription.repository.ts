@@ -6,6 +6,7 @@ export abstract class PlanRepository {
   abstract findById(id: string): Promise<Plan | null>;
   abstract findBySlug(slug: string): Promise<Plan | null>;
   abstract upsert(plan: Plan): Promise<Plan>;
+  abstract deactivateExcept(activeSlugs: string[]): Promise<void>;
 }
 
 export abstract class SubscriptionRepository {

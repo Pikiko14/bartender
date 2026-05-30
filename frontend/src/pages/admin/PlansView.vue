@@ -45,7 +45,7 @@
     </div>
 
     <h2 class="mt-10 text-lg font-bold">Cambiar de plan</h2>
-    <div class="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div class="mx-auto mt-4 grid max-w-3xl gap-4 md:grid-cols-2">
       <div
         v-for="plan in availablePlans"
         :key="plan.id"
@@ -69,7 +69,7 @@
           :disabled="plans.currentPlan?.slug === plan.slug || upgrading"
           @click="upgrade(plan.slug)"
         >
-          {{ plans.currentPlan?.slug === plan.slug ? 'Plan actual' : 'Seleccionar' }}
+          {{ plans.currentPlan?.slug === plan.slug ? 'Plan actual' : upgrading ? 'Redirigiendo…' : 'Seleccionar' }}
         </button>
       </div>
     </div>
@@ -78,6 +78,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { usePlansStore } from '@/stores/plans.store';
 import { formatMoney } from '@/shared/format';
 import { apiErrorMessage } from '@/services/http';
@@ -86,11 +87,11 @@ import type { Plan } from '@/shared/types';
 
 const plans = usePlansStore();
 const toast = useToast();
+const route = useRoute();
+const router = useRouter();
 const upgrading = ref(false);
 
-const availablePlans = computed(() =>
-  plans.plans.filter((p) => p.slug !== 'trial' || plans.currentPlan?.slug === 'trial'),
-);
+const availablePlans = computed(() => plans.plans);
 
 function formatPrice(plan: Plan) {
   const amount = plans.billingCycle === 'monthly' ? plan.priceMonthly : plan.priceYearly;
@@ -104,18 +105,35 @@ function formatDate(iso: string) {
 async function upgrade(slug: string) {
   upgrading.value = true;
   try {
-    await plans.changePlan(slug);
-    toast.success('Plan actualizado correctamente.');
+    const { checkoutUrl } = await plans.startCheckout(slug);
+    window.location.href = checkoutUrl;
   } catch (e) {
     toast.error(apiErrorMessage(e));
-  } finally {
     upgrading.value = false;
   }
+}
+
+async function handlePaymentReturn() {
+  const status = route.query.payment;
+  if (!status || typeof status !== 'string') return;
+
+  await plans.fetchCurrent().catch(() => undefined);
+
+  if (status === 'success') {
+    toast.success('Pago recibido. Tu plan se actualizará en unos segundos.');
+  } else if (status === 'pending') {
+    toast.info('Pago pendiente. Te avisaremos cuando se confirme.');
+  } else if (status === 'failure') {
+    toast.error('El pago no se completó. Puedes intentarlo de nuevo.');
+  }
+
+  router.replace({ query: {} });
 }
 
 onMounted(async () => {
   await Promise.all([plans.fetchPublicPlans(), plans.fetchCurrent()]).catch((e) =>
     toast.error(apiErrorMessage(e)),
   );
+  await handlePaymentReturn();
 });
 </script>

@@ -59,4 +59,11 @@ export class MusicController {
   playRequest(@CurrentUser('businessId') businessId: string, @Param('id') id: string) {
     return this.playback.playRequest(businessId, id);
   }
+
+  /** Pantalla DJ: confirma qué canción está sonando (status → playing). */
+  @Post('requests/:id/sync-playing')
+  @RequirePermissions(Permission.MUSIC_PLAYBACK)
+  syncPlaying(@CurrentUser('businessId') businessId: string, @Param('id') id: string) {
+    return this.playback.syncNowPlaying(businessId, id);
+  }
 }

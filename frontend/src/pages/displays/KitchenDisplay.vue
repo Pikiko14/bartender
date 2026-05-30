@@ -14,17 +14,14 @@
     >
       <div v-for="o in sorted" :key="o.id" class="card p-4" :class="urgencyClass(o.createdAt)">
         <div class="flex items-center justify-between">
-          <span class="text-lg font-bold">Mesa {{ o.tableId.slice(-4) }}</span>
+          <span class="text-lg font-bold">{{ formatTableLabel(o) }}</span>
           <span class="badge" :class="ORDER_STATUS_CLASS[o.status]">{{
             ORDER_STATUS_LABEL[o.status]
           }}</span>
         </div>
         <p class="text-xs text-slate-500">⏱ {{ elapsedMinutes(o.createdAt) }} min</p>
-        <ul class="mt-3 space-y-1.5">
-          <li v-for="(it, i) in o.items" :key="i" class="text-sm">
-            <span class="font-bold text-neon-cyan">{{ it.quantity }}×</span> {{ it.name }}
-            <span v-if="it.notes" class="block text-xs text-amber-300">“{{ it.notes }}”</span>
-          </li>
+        <ul class="mt-3 space-y-2">
+          <OrderItemLine v-for="(it, i) in o.items" :key="i" :item="it" />
         </ul>
         <div class="mt-4 flex gap-2">
           <button
@@ -51,18 +48,24 @@ import {
   NEXT_STATUS,
   elapsedMinutes,
 } from '@/shared/order-status';
+import { filterOrderForArea } from '@/shared/order-area';
+import { formatTableLabel } from '@/shared/table-label';
 import type { OrderStatus } from '@/shared/types';
 import { apiErrorMessage } from '@/services/http';
 import { useToast } from '@/composables/useToast';
+import OrderItemLine from '@/components/OrderItemLine.vue';
 
 const orders = useOrdersStore();
 const auth = useAuthStore();
 const toast = useToast();
 
 const sorted = computed(() =>
-  [...orders.kitchen].sort(
-    (a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime(),
-  ),
+  orders.kitchen
+    .map((o) => filterOrderForArea(o, 'KITCHEN'))
+    .filter((o) => o !== null)
+    .sort(
+      (a, b) => new Date(a.createdAt ?? 0).getTime() - new Date(b.createdAt ?? 0).getTime(),
+    ),
 );
 
 function next(status: OrderStatus) {

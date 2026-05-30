@@ -10,6 +10,7 @@ export class OrderMapper {
       businessId: doc.businessId.toString(),
       tableId: doc.tableId.toString(),
       sessionId: doc.sessionId,
+      tableSessionId: doc.tableSessionId ?? '',
       status: doc.status,
       notes: doc.notes,
       items: doc.items.map(
@@ -21,6 +22,7 @@ export class OrderMapper {
             quantity: i.quantity,
             preparationArea: i.preparationArea,
             notes: i.notes,
+            image: i.image ?? null,
           }),
       ),
       createdAt: (doc as unknown as { createdAt?: Date }).createdAt,
@@ -33,6 +35,7 @@ export class OrderMapper {
       businessId: new Types.ObjectId(order.businessId),
       tableId: new Types.ObjectId(order.tableId),
       sessionId: order.sessionId,
+      tableSessionId: order.tableSessionId || null,
       items: order.items.map((i) => ({
         menuItemId: new Types.ObjectId(i.menuItemId),
         name: i.name,
@@ -40,6 +43,7 @@ export class OrderMapper {
         quantity: i.quantity,
         preparationArea: i.preparationArea,
         notes: i.notes,
+        image: i.image,
       })),
       total: order.total,
       areas: order.areas,

@@ -154,16 +154,16 @@ async function run(): Promise<void> {
   }
 
   const itemData: Array<[string, string, number, PreparationArea, string]> = [
-    ['Mojito', 'Cócteles', 8.5, PreparationArea.BAR, 'Ron, lima, menta y soda.'],
-    ['Negroni', 'Cócteles', 9.0, PreparationArea.BAR, 'Gin, Campari y vermut rojo.'],
-    ['Gin Tonic Premium', 'Cócteles', 10.0, PreparationArea.BAR, 'Gin premium y tónica artesanal.'],
-    ['IPA Artesanal', 'Cervezas', 5.0, PreparationArea.BAR, 'Cerveza IPA local de barril.'],
-    ['Rubia 33cl', 'Cervezas', 3.5, PreparationArea.BAR, 'Cerveza rubia bien fría.'],
-    ['Patatas Bravas', 'Para picar', 6.5, PreparationArea.KITCHEN, 'Con salsa brava y alioli.'],
-    ['Croquetas de Jamón', 'Para picar', 7.0, PreparationArea.KITCHEN, 'Seis unidades caseras.'],
-    ['Burger Bartender', 'Para picar', 11.5, PreparationArea.KITCHEN, 'Doble carne, cheddar y bacon.'],
-    ['Coulant de Chocolate', 'Postres', 6.0, PreparationArea.KITCHEN, 'Con helado de vainilla.'],
-    ['Tarta de Queso', 'Postres', 5.5, PreparationArea.KITCHEN, 'Estilo horno, cremosa.'],
+    ['Mojito', 'Cócteles', 35000, PreparationArea.BAR, 'Ron, lima, menta y soda.'],
+    ['Negroni', 'Cócteles', 38000, PreparationArea.BAR, 'Gin, Campari y vermut rojo.'],
+    ['Gin Tonic Premium', 'Cócteles', 42000, PreparationArea.BAR, 'Gin premium y tónica artesanal.'],
+    ['IPA Artesanal', 'Cervezas', 18000, PreparationArea.BAR, 'Cerveza IPA local de barril.'],
+    ['Rubia 33cl', 'Cervezas', 12000, PreparationArea.BAR, 'Cerveza rubia bien fría.'],
+    ['Patatas Bravas', 'Para picar', 25000, PreparationArea.KITCHEN, 'Con salsa brava y alioli.'],
+    ['Croquetas de Jamón', 'Para picar', 28000, PreparationArea.KITCHEN, 'Seis unidades caseras.'],
+    ['Burger Bartender', 'Para picar', 45000, PreparationArea.KITCHEN, 'Doble carne, cheddar y bacon.'],
+    ['Coulant de Chocolate', 'Postres', 22000, PreparationArea.KITCHEN, 'Con helado de vainilla.'],
+    ['Tarta de Queso', 'Postres', 20000, PreparationArea.KITCHEN, 'Estilo horno, cremosa.'],
   ];
   for (const [name, catName, price, area, description] of itemData) {
     await items.create(

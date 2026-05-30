@@ -36,6 +36,9 @@ export const usePlansStore = defineStore('plans', {
       this.currentPlan = data.plan;
       return data;
     },
+    async startCheckout(planSlug: string) {
+      return plansApi.checkout(planSlug, this.billingCycle);
+    },
     setBillingCycle(cycle: 'monthly' | 'yearly') {
       this.billingCycle = cycle;
     },

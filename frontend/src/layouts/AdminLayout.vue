@@ -80,17 +80,19 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { RouterLink, RouterView, useRouter } from 'vue-router';
+import { computed, onMounted, ref, watch } from 'vue';
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { useBusinessStore } from '@/stores/business.store';
 import { realtime } from '@/socket/socket';
 import { djShareUrl } from '@/shared/dj-share';
+import { setDocumentTitle } from '@/shared/document-title';
 import ToastHost from '@/components/ToastHost.vue';
 
 const auth = useAuthStore();
 const business = useBusinessStore();
 const router = useRouter();
+const route = useRoute();
 
 const sidebarOpen = ref(false);
 const newBizName = ref('');
@@ -110,6 +112,12 @@ const visibleLinks = computed(() => links.filter((l) => auth.can(l.perm)));
 const needsBusiness = computed(() => auth.hasRole('OWNER') && !auth.user?.businessId);
 const djShareHref = computed(() =>
   business.current?.slug ? djShareUrl(business.current.slug) : '',
+);
+
+watch(
+  () => route.meta.title,
+  (title) => setDocumentTitle(typeof title === 'string' ? title : undefined),
+  { immediate: true },
 );
 
 onMounted(async () => {

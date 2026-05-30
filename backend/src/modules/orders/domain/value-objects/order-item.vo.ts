@@ -7,6 +7,7 @@ export interface OrderItemProps {
   quantity: number;
   preparationArea: PreparationArea;
   notes?: string | null;
+  image?: string | null;
 }
 
 /** Value Object: línea de pedido inmutable (snapshot del producto). */
@@ -17,6 +18,7 @@ export class OrderItem {
   readonly quantity: number;
   readonly preparationArea: PreparationArea;
   readonly notes: string | null;
+  readonly image: string | null;
 
   constructor(props: OrderItemProps) {
     if (props.quantity <= 0) {
@@ -28,6 +30,7 @@ export class OrderItem {
     this.quantity = props.quantity;
     this.preparationArea = props.preparationArea;
     this.notes = props.notes ?? null;
+    this.image = props.image ?? null;
   }
 
   get subtotal(): number {
@@ -42,6 +45,7 @@ export class OrderItem {
       quantity: this.quantity,
       preparationArea: this.preparationArea,
       notes: this.notes,
+      image: this.image,
     };
   }
 }
