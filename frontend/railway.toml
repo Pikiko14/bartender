@@ -1,0 +1,14 @@
+# =============================================================================
+# Frontend — Railway
+# Dashboard → Settings → Root Directory: frontend
+# Variables de build (Settings → Variables):
+#   VITE_API_URL=https://<tu-backend>.up.railway.app
+#   VITE_SOCKET_URL=https://<tu-backend>.up.railway.app
+#   VITE_YOUTUBE_API_KEY=...
+# =============================================================================
+[build]
+builder = "RAILPACK"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

@@ -1,0 +1,9 @@
+# Alternativa: desplegar backend con Root Directory vacío (raíz del repo).
+# Dashboard → Dockerfile Path: Dockerfile.backend
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.backend"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

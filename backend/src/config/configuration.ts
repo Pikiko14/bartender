@@ -63,7 +63,8 @@ export default (): Configuration => ({
   app: {
     env: process.env.NODE_ENV ?? 'development',
     name: process.env.APP_NAME ?? 'Bartender',
-    port: parseInt(process.env.BACKEND_PORT ?? '3000', 10),
+    // Railway inyecta PORT; BACKEND_PORT se usa en docker compose local.
+    port: parseInt(process.env.PORT ?? process.env.BACKEND_PORT ?? '3000', 10),
     apiPrefix: process.env.API_PREFIX ?? 'api',
   },
   mongo: {
