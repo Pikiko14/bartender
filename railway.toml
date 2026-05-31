@@ -1,4 +1,5 @@
-# Backend — servicio con Root Directory = backend
+# Backend — servicio con Root Directory vacío (raíz del repo).
+# Frontend: crea OTRO servicio con Root Directory = frontend
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
