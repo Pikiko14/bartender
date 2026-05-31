@@ -10,6 +10,7 @@ export interface MongoConfig {
 }
 
 export interface RedisConfig {
+  url?: string;
   host: string;
   port: number;
   password?: string;
@@ -59,6 +60,54 @@ export interface Configuration {
   mercadoPago: MercadoPagoConfig;
 }
 
+function stripEnvQuotes(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+/** Upstash: REST URL + token → conexión TCP (mismo token como password). */
+function upstashRestToRedisUrl(restUrl: string, token: string): string {
+  const host = restUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
+  return `rediss://default:${encodeURIComponent(token)}@${host}:6379`;
+}
+
+function buildRedisConfig(): RedisConfig {
+  const explicitUrl =
+    stripEnvQuotes(process.env.REDIS_URL) ??
+    stripEnvQuotes(process.env.REDIS_PRIVATE_URL) ??
+    stripEnvQuotes(process.env.UPSTASH_REDIS_URL);
+
+  const upstashRestUrl = stripEnvQuotes(process.env.UPSTASH_REDIS_REST_URL);
+  const upstashRestToken = stripEnvQuotes(process.env.UPSTASH_REDIS_REST_TOKEN);
+  const upstashUrl =
+    !explicitUrl && upstashRestUrl && upstashRestToken
+      ? upstashRestToRedisUrl(upstashRestUrl, upstashRestToken)
+      : undefined;
+
+  const url = explicitUrl ?? upstashUrl;
+
+  const host = stripEnvQuotes(process.env.REDIS_HOST ?? process.env.REDISHOST);
+
+  // A veces la URL TCP de Upstash se pega en REDIS_HOST por error.
+  if (!url && host && /^rediss?:\/\//i.test(host)) {
+    return { url: host, host: 'localhost', port: 6379 };
+  }
+
+  return {
+    url,
+    host: host ?? 'localhost',
+    port: parseInt(process.env.REDIS_PORT ?? process.env.REDISPORT ?? '6379', 10),
+    password: process.env.REDIS_PASSWORD ?? process.env.REDISPASSWORD ?? undefined,
+  };
+}
+
 export default (): Configuration => ({
   app: {
     env: process.env.NODE_ENV ?? 'development',
@@ -70,11 +119,7 @@ export default (): Configuration => ({
   mongo: {
     uri: process.env.MONGO_URI ?? 'mongodb://localhost:27017/bartender',
   },
-  redis: {
-    host: process.env.REDIS_HOST ?? 'localhost',
-    port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
-    password: process.env.REDIS_PASSWORD || undefined,
-  },
+  redis: buildRedisConfig(),
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET ?? 'access_secret',
     accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',

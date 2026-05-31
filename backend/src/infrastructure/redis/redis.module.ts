@@ -7,13 +7,16 @@ import { RedisService } from './redis.service';
 
 const buildClient = (config: ConfigService, label: string): Redis => {
   const logger = new Logger(`Redis:${label}`);
-  const client = new Redis({
-    host: config.get<string>('redis.host'),
-    port: config.get<number>('redis.port'),
-    password: config.get<string>('redis.password') || undefined,
-    maxRetriesPerRequest: null,
-    lazyConnect: false,
-  });
+  const url = config.get<string>('redis.url');
+  const client = url
+    ? new Redis(url, { maxRetriesPerRequest: null, lazyConnect: false })
+    : new Redis({
+        host: config.get<string>('redis.host'),
+        port: config.get<number>('redis.port'),
+        password: config.get<string>('redis.password') || undefined,
+        maxRetriesPerRequest: null,
+        lazyConnect: false,
+      });
   client.on('error', (err) => logger.error(`Redis error: ${err.message}`));
   client.on('connect', () => logger.log(`Conectado (${label}).`));
   return client;
