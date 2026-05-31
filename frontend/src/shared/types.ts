@@ -144,6 +144,17 @@ export interface TableSession {
   status: TableSessionStatus;
   openedAt: string;
   closedAt: string | null;
+  customerId: string | null;
+}
+
+export interface Customer {
+  id: string;
+  businessId: string;
+  name: string;
+  document: string;
+  phone: string | null;
+  email: string | null;
+  notes: string | null;
 }
 
 export interface TableBillLine {
@@ -156,14 +167,16 @@ export interface TableBillLine {
 }
 
 export interface TableBill {
-  tableSession: TableSession;
+  tableSession: TableSession | null;
   tableId: string;
   tableName?: string;
   tableNumber?: number;
+  customer: Customer | null;
   orders: Order[];
   lines: TableBillLine[];
   orderCount: number;
   total: number;
+  hasActiveSession: boolean;
   closed?: boolean;
 }
 
@@ -172,6 +185,8 @@ export interface ScanResult {
   business: Business;
   table: TableEntity;
   tableSession: TableSession;
+  customer: Customer | null;
+  requiresCustomerRegistration: boolean;
   resumed: boolean;
 }
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '@shared/decorators';
 import { GetBusinessUseCase } from '@modules/business/application/use-cases/get-business.use-case';
@@ -6,11 +6,13 @@ import {
   FindAlternativeDto,
   RequestSongDto,
   SearchMusicDto,
+  UpdatePlaybackSourceDto,
   VoteSongDto,
 } from '../../application/dto/music.dto';
 import { GetQueueUseCase } from '../../application/use-cases/get-queue.use-case';
 import { PlaybackUseCase } from '../../application/use-cases/playback.use-case';
 import { RequestSongUseCase } from '../../application/use-cases/request-song.use-case';
+import { ResolveMusicPlaybackUseCase } from '../../application/use-cases/resolve-music-playback.use-case';
 import { VoteSongUseCase } from '../../application/use-cases/vote-song.use-case';
 import { YoutubeService } from '../services/youtube.service';
 
@@ -23,6 +25,7 @@ export class PublicMusicController {
     private readonly voteSong: VoteSongUseCase,
     private readonly getQueue: GetQueueUseCase,
     private readonly playback: PlaybackUseCase,
+    private readonly resolvePlayback: ResolveMusicPlaybackUseCase,
     private readonly getBusiness: GetBusinessUseCase,
   ) {}
 
@@ -59,6 +62,24 @@ export class PublicMusicController {
   async queue(@Param('businessSlug') businessSlug: string) {
     const business = await this.getBusiness.bySlug(businessSlug);
     return this.getQueue.publicQueue(business.id);
+  }
+
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post(':businessSlug/skip')
+  async skip(@Param('businessSlug') businessSlug: string) {
+    const business = await this.getBusiness.bySlug(businessSlug);
+    return this.playback.skip(business.id);
+  }
+
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Patch(':businessSlug/requests/:id/playback-source')
+  async updatePlaybackSource(
+    @Param('businessSlug') businessSlug: string,
+    @Param('id') id: string,
+    @Body() dto: UpdatePlaybackSourceDto,
+  ) {
+    const business = await this.getBusiness.bySlug(businessSlug);
+    return this.resolvePlayback.updateSource(business.id, id, dto);
   }
 
   /** Avanza la cola desde pantallas DJ/TV públicas (sin login de staff). */

@@ -69,6 +69,10 @@ export class Order {
     this.props.status = next;
   }
 
+  assignTableSession(tableSessionId: string): void {
+    this.props.tableSessionId = tableSessionId;
+  }
+
   toPrimitives() {
     return {
       ...this.props,

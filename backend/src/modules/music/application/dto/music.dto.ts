@@ -59,3 +59,21 @@ export class SetPriorityDto {
   @Max(100)
   priority!: number;
 }
+
+export class UpdatePlaybackSourceDto {
+  @IsString()
+  @MaxLength(20)
+  youtubeId!: string;
+
+  @IsString()
+  @MaxLength(200)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  thumbnail?: string | null;
+
+  @IsOptional()
+  @IsString()
+  channelTitle?: string | null;
+}

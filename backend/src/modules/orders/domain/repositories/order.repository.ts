@@ -8,6 +8,7 @@ export interface OrderFilter {
   tableId?: string;
   sessionId?: string;
   tableSessionId?: string;
+  missingTableSession?: boolean;
   from?: Date;
   to?: Date;
 }

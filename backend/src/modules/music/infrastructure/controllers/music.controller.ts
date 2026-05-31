@@ -1,10 +1,11 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { CurrentUser, RequirePermissions } from '@shared/decorators';
 import { Permission } from '@shared/enums';
-import { SetPriorityDto } from '../../application/dto/music.dto';
+import { SetPriorityDto, UpdatePlaybackSourceDto } from '../../application/dto/music.dto';
 import { GetQueueUseCase } from '../../application/use-cases/get-queue.use-case';
 import { ModerateMusicUseCase } from '../../application/use-cases/moderate-music.use-case';
 import { PlaybackUseCase } from '../../application/use-cases/playback.use-case';
+import { ResolveMusicPlaybackUseCase } from '../../application/use-cases/resolve-music-playback.use-case';
 
 @Controller('music')
 export class MusicController {
@@ -12,6 +13,7 @@ export class MusicController {
     private readonly getQueue: GetQueueUseCase,
     private readonly moderate: ModerateMusicUseCase,
     private readonly playback: PlaybackUseCase,
+    private readonly resolvePlayback: ResolveMusicPlaybackUseCase,
   ) {}
 
   @Get('queue')
@@ -65,5 +67,15 @@ export class MusicController {
   @RequirePermissions(Permission.MUSIC_PLAYBACK)
   syncPlaying(@CurrentUser('businessId') businessId: string, @Param('id') id: string) {
     return this.playback.syncNowPlaying(businessId, id);
+  }
+
+  @Patch('requests/:id/playback-source')
+  @RequirePermissions(Permission.MUSIC_PLAYBACK)
+  updatePlaybackSource(
+    @CurrentUser('businessId') businessId: string,
+    @Param('id') id: string,
+    @Body() dto: UpdatePlaybackSourceDto,
+  ) {
+    return this.resolvePlayback.updateSource(businessId, id, dto);
   }
 }

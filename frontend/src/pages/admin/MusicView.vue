@@ -140,7 +140,6 @@ const isPlaying = ref(true);
 const busy = ref(false);
 let unregPlaybackSync: (() => void) | undefined;
 let unregMusicSync: (() => void) | undefined;
-let queuePollTimer: ReturnType<typeof setInterval> | undefined;
 
 const businessSlug = computed(() => business.current?.slug ?? '');
 const shareUrl = computed(() => (businessSlug.value ? djShareUrl(businessSlug.value) : ''));
@@ -238,24 +237,6 @@ onMounted(async () => {
         return;
       }
       music.nowPlaying = msg.track;
-      void music.fetchQueue().catch(() => undefined);
-    });
-
-    const refreshQueue = () => {
-      void music.fetchQueue().catch(() => undefined);
-    };
-
-    queuePollTimer = setInterval(() => {
-      if (document.hidden) return;
-      refreshQueue();
-    }, 2000);
-
-    document.addEventListener('visibilitychange', refreshQueue);
-    window.addEventListener('focus', refreshQueue);
-
-    onBeforeUnmount(() => {
-      document.removeEventListener('visibilitychange', refreshQueue);
-      window.removeEventListener('focus', refreshQueue);
     });
   }
 
@@ -269,6 +250,5 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unregPlaybackSync?.();
   unregMusicSync?.();
-  if (queuePollTimer) clearInterval(queuePollTimer);
 });
 </script>

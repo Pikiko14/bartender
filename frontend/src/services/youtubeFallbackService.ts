@@ -67,7 +67,10 @@ export async function findAlternativeVideo(
   }
 }
 
-export async function handleBlockedVideo(source: PlaybackSource): Promise<ResolvePlaybackResult> {
+export async function handleBlockedVideo(
+  source: PlaybackSource,
+  options: { openExternal?: boolean } = {},
+): Promise<ResolvePlaybackResult> {
   console.log('[YOUTUBE] Video bloqueado:', source.youtubeId);
   markBlocked(source.youtubeId);
 
@@ -82,14 +85,21 @@ export async function handleBlockedVideo(source: PlaybackSource): Promise<Resolv
     };
   }
 
-  console.log('[YOUTUBE] Fallback externo activado');
-  window.open(`https://www.youtube.com/watch?v=${source.youtubeId}`, '_blank');
+  if (options.openExternal !== false) {
+    console.log('[YOUTUBE] Fallback externo activado');
+    window.open(`https://www.youtube.com/watch?v=${source.youtubeId}`, '_blank');
+  }
   return {
     ok: false,
     external: true,
     youtubeId: source.youtubeId,
     title: source.title,
   };
+}
+
+export function clearTrackResolution(trackId: string): void {
+  trackResolutionCache.delete(trackId);
+  resolveInFlight.delete(trackId);
 }
 
 export function getCachedTrackResolution(trackId: string): ResolvePlaybackResult | undefined {

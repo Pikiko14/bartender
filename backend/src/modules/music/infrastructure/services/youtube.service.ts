@@ -85,6 +85,12 @@ export class YoutubeService {
     return statuses.get(videoId) ?? false;
   }
 
+  /** Devuelve el video original si es embeddable; si no, busca una alternativa del mismo tema. */
+  async resolveForPlayback(video: YoutubeVideo): Promise<YoutubeVideo | null> {
+    if (await this.isEmbeddable(video.youtubeId)) return video;
+    return this.findAlternativeVideo(video.title, video.channelTitle);
+  }
+
   /** Busca una versión alternativa embeddable del mismo tema. */
   async findAlternativeVideo(title: string, artist?: string): Promise<YoutubeVideo | null> {
     const artistName = artist?.trim() ?? '';

@@ -20,6 +20,9 @@ export class TableSessionModel {
 
   @Prop({ type: Date, default: null })
   closedAt!: Date | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'CustomerModel', default: null, index: true })
+  customerId!: Types.ObjectId | null;
 }
 
 export const TableSessionSchema = SchemaFactory.createForClass(TableSessionModel);

@@ -8,6 +8,7 @@ export interface TableSessionView {
   status: TableSessionStatus;
   openedAt: Date;
   closedAt: Date | null;
+  customerId: string | null;
 }
 
 export function presentTableSession(session: TableSession): TableSessionView {
@@ -19,5 +20,6 @@ export function presentTableSession(session: TableSession): TableSessionView {
     status: p.status,
     openedAt: p.openedAt,
     closedAt: p.closedAt ?? null,
+    customerId: p.customerId ?? null,
   };
 }

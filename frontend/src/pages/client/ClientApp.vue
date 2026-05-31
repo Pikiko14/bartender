@@ -12,11 +12,63 @@
       <RouterLink to="/" class="btn-ghost">Volver</RouterLink>
     </div>
 
+    <template v-else-if="needsRegistration">
+      <div class="flex min-h-screen flex-col px-5 py-8">
+        <header class="mb-8 text-center">
+          <h1 class="text-2xl font-extrabold">{{ business?.name }}</h1>
+          <p class="mt-1 text-sm text-slate-400">{{ table?.name }}</p>
+        </header>
+
+        <div class="card mx-auto w-full max-w-sm p-6">
+          <h2 class="text-lg font-bold">Identificación</h2>
+          <p class="mt-1 text-sm text-slate-400">
+            Ingresá tu documento y nombre para abrir la cuenta de la mesa.
+          </p>
+          <p v-if="sessionReopened" class="mt-2 text-xs text-amber-300">
+            La cuenta anterior fue cerrada. Completá tus datos para empezar de nuevo.
+          </p>
+
+          <form class="mt-5 space-y-3" @submit.prevent="submitRegistration">
+            <div>
+              <label class="text-xs text-slate-500">Documento de identidad *</label>
+              <input
+                v-model="guestForm.document"
+                class="input mt-1 w-full"
+                placeholder="Ej. 30123456"
+                autocomplete="off"
+                required
+              />
+            </div>
+            <div>
+              <label class="text-xs text-slate-500">Nombre completo *</label>
+              <input
+                v-model="guestForm.name"
+                class="input mt-1 w-full"
+                placeholder="Tu nombre"
+                autocomplete="name"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              class="btn-primary mt-2 w-full"
+              :disabled="registering || !canRegister"
+            >
+              {{ registering ? 'Registrando…' : 'Continuar' }}
+            </button>
+          </form>
+        </div>
+      </div>
+    </template>
+
     <template v-else>
       <!-- Cabecera negocio -->
       <header class="relative overflow-hidden border-b border-ink-700 bg-ink-900/70 px-5 pb-4 pt-6">
         <h1 class="text-2xl font-extrabold">{{ business?.name }}</h1>
         <p class="text-sm text-slate-400">{{ table?.name }} · {{ business?.description }}</p>
+        <p v-if="bill.customer" class="mt-1 text-xs text-slate-500">
+          {{ bill.customer.name }} · DNI {{ bill.customer.document }}
+        </p>
       </header>
 
       <!-- Tabs -->
@@ -37,7 +89,34 @@
 
       <!-- CARTA -->
       <section v-show="tab === 'menu'" class="px-5 py-4">
-        <div v-for="cat in menu" :key="cat.id" class="mb-8">
+        <div
+          v-if="menuCategories.length > 1"
+          class="sticky top-[49px] z-10 -mx-5 mb-4 flex gap-2 overflow-x-auto border-b border-ink-800 bg-ink-950/95 px-5 pb-3 pt-1 backdrop-blur"
+        >
+          <button
+            type="button"
+            class="badge shrink-0 cursor-pointer px-3 py-1.5"
+            :class="!menuCategoryFilter ? 'bg-neon-pink text-white' : 'bg-ink-700 text-slate-300'"
+            @click="menuCategoryFilter = null"
+          >
+            Todos
+          </button>
+          <button
+            v-for="cat in menuCategories"
+            :key="cat.id"
+            type="button"
+            class="badge shrink-0 cursor-pointer px-3 py-1.5"
+            :class="
+              menuCategoryFilter === cat.id ? 'bg-neon-pink text-white' : 'bg-ink-700 text-slate-300'
+            "
+            @click="menuCategoryFilter = cat.id"
+          >
+            <span class="mr-1">{{ categoryIcon(cat.type) }}</span>
+            {{ cat.name }}
+          </button>
+        </div>
+
+        <div v-for="cat in filteredMenu" :key="cat.id" class="mb-8">
           <MenuImage
             v-if="cat.image"
             :src="cat.image"
@@ -73,6 +152,9 @@
             </div>
           </div>
         </div>
+        <p v-if="!filteredMenu.length" class="text-center text-sm text-slate-500">
+          No hay productos en esta categoría.
+        </p>
       </section>
 
       <!-- MIS PEDIDOS -->
@@ -225,7 +307,34 @@ const table = ref<TableEntity | null>(null);
 const sessionId = ref('');
 const tableSessionId = ref('');
 const tableClosed = ref(false);
+const customerRegistered = ref(false);
+const sessionReopened = ref(false);
+const needsRegistration = computed(
+  () => !customerRegistered.value && !loading.value && !error.value,
+);
+const guestForm = reactive({ name: '', document: '' });
+const registering = ref(false);
+const canRegister = computed(
+  () => guestForm.name.trim().length >= 2 && guestForm.document.trim().length >= 5,
+);
 const menu = ref<MenuCategory[]>([]);
+const menuCategoryFilter = ref<string | null>(null);
+
+const menuCategories = computed(() =>
+  menu.value
+    .map((cat) => ({
+      ...cat,
+      items: (cat.items ?? []).filter((i) => i.available),
+    }))
+    .filter((cat) => cat.items.length > 0)
+    .sort((a, b) => a.order - b.order),
+);
+
+const filteredMenu = computed(() => {
+  if (!menuCategoryFilter.value) return menuCategories.value;
+  return menuCategories.value.filter((c) => c.id === menuCategoryFilter.value);
+});
+
 const myOrders = ref<Order[]>([]);
 const bill = reactive<TableBill>({
   tableSession: {
@@ -235,12 +344,15 @@ const bill = reactive<TableBill>({
     status: 'open',
     openedAt: '',
     closedAt: null,
+    customerId: null,
   },
   tableId: '',
+  customer: null,
   orders: [],
   lines: [],
   orderCount: 0,
   total: 0,
+  hasActiveSession: false,
 });
 
 const cart = reactive<Array<{ item: MenuItem; qty: number }>>([]);
@@ -273,18 +385,96 @@ async function refreshTableData() {
     bill.tableId = billData.tableId;
     bill.tableName = billData.tableName;
     bill.tableNumber = billData.tableNumber;
+    bill.customer = billData.customer ?? null;
     bill.orders = billData.orders;
     bill.lines = billData.lines;
     bill.orderCount = billData.orderCount;
     bill.total = billData.total;
+    bill.hasActiveSession = billData.hasActiveSession ?? !!billData.tableSession;
     tableClosed.value = billData.closed === true || billData.tableSession?.status === 'closed';
     tableSessionId.value = billData.tableSession?.id ?? tableSessionId.value;
+    if (billData.customer) customerRegistered.value = true;
+  }
+}
+
+function resetBillState() {
+  bill.customer = null;
+  bill.orders = [];
+  bill.lines = [];
+  bill.orderCount = 0;
+  bill.total = 0;
+  bill.hasActiveSession = false;
+  bill.tableSession = {
+    id: '',
+    businessId: '',
+    tableId: '',
+    status: 'open',
+    openedAt: '',
+    closedAt: null,
+    customerId: null,
+  };
+}
+
+async function reopenTableSession() {
+  const businessSlug = String(route.params.businessSlug);
+  const tableSlug = String(route.params.tableSlug);
+
+  localStorage.removeItem(sessionKey());
+  cart.splice(0, cart.length);
+  guestForm.name = '';
+  guestForm.document = '';
+  myOrders.value = [];
+  resetBillState();
+  customerRegistered.value = false;
+  tableClosed.value = false;
+  sessionReopened.value = true;
+  tab.value = 'menu';
+
+  const scan = await publicApi.scan(businessSlug, tableSlug);
+  sessionId.value = scan.session.sessionId;
+  tableSessionId.value = scan.tableSession.id;
+  tableClosed.value = scan.tableSession.status === 'closed';
+  customerRegistered.value =
+    !scan.requiresCustomerRegistration && (!!scan.customer || !!scan.tableSession.customerId);
+  if (scan.customer) bill.customer = scan.customer;
+  localStorage.setItem(sessionKey(), sessionId.value);
+
+  if (customerRegistered.value) {
+    sessionReopened.value = false;
+    await refreshTableData();
+  }
+}
+
+async function submitRegistration() {
+  if (!canRegister.value || !sessionId.value) return;
+  registering.value = true;
+  try {
+    const result = await publicApi.registerCustomer({
+      sessionId: sessionId.value,
+      name: guestForm.name.trim(),
+      document: guestForm.document.trim(),
+    });
+    bill.customer = result.customer;
+    bill.tableSession = result.tableSession;
+    tableSessionId.value = result.tableSession.id;
+    customerRegistered.value = true;
+    sessionReopened.value = false;
+    toast.success(`Bienvenido, ${result.customer.name}`);
+    await refreshTableData();
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
+  } finally {
+    registering.value = false;
   }
 }
 
 async function submitOrder() {
+  if (!customerRegistered.value) {
+    toast.error('Registra tu documento y nombre antes de pedir.');
+    return;
+  }
   if (tableClosed.value) {
-    toast.error('La mesa está cerrada. Escanea el QR de nuevo.');
+    toast.error('La mesa está cerrada. Esperá un momento…');
     return;
   }
   sending.value = true;
@@ -352,10 +542,15 @@ onMounted(async () => {
     sessionId.value = scan.session.sessionId;
     tableSessionId.value = scan.tableSession.id;
     tableClosed.value = scan.tableSession.status === 'closed';
+    customerRegistered.value =
+      !scan.requiresCustomerRegistration && (!!scan.customer || !!scan.tableSession.customerId);
+    if (scan.customer) bill.customer = scan.customer;
     localStorage.setItem(sessionKey(), sessionId.value);
 
     menu.value = await publicApi.menu(businessSlug);
-    await refreshTableData();
+    if (customerRegistered.value) {
+      await refreshTableData();
+    }
 
     const q = await publicApi.publicQueue(businessSlug).catch(() => ({ nowPlaying: null, queue: [] }));
     queue.nowPlaying = q.nowPlaying;
@@ -372,10 +567,9 @@ onMounted(async () => {
       void refreshTableData();
     });
     realtime.on<{ tableSessionId: string }>(SocketEvents.TABLE_SESSION_CLOSED, (payload) => {
-      if (payload.tableSessionId === tableSessionId.value) {
-        tableClosed.value = true;
-        toast.info('La cuenta de la mesa fue cerrada.');
-      }
+      if (payload.tableSessionId !== tableSessionId.value) return;
+      toast.info('La cuenta de la mesa fue cerrada.');
+      void reopenTableSession().catch((e) => toast.error(apiErrorMessage(e)));
     });
     realtime.on<MusicQueue>(SocketEvents.MUSIC_QUEUE_UPDATED, (q2) => {
       queue.nowPlaying = q2.nowPlaying;

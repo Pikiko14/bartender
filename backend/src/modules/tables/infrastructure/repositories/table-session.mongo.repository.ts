@@ -49,6 +49,18 @@ export class TableSessionMongoRepository extends TableSessionRepository {
     return docs.map(TableSessionMapper.toDomain);
   }
 
+  async findClosedByBusiness(businessId: string, limit = 50): Promise<TableSession[]> {
+    const docs = await this.model
+      .find({
+        businessId: new Types.ObjectId(businessId),
+        status: TableSessionStatus.CLOSED,
+      })
+      .sort({ closedAt: -1 })
+      .limit(limit)
+      .exec();
+    return docs.map(TableSessionMapper.toDomain);
+  }
+
   async update(session: TableSession): Promise<TableSession> {
     const updated = await this.model
       .findByIdAndUpdate(session.id, TableSessionMapper.toPersistence(session), { new: true })

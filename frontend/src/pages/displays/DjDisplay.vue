@@ -15,7 +15,9 @@
         @need-sync="onPlayerNeedSync"
         @playing="onPlayerPlaying"
         @error="onPlayerError"
-        @external-fallback="onPlayerExternalFallback"
+        @external-fallback="onPlaybackUnavailable"
+        @playback-unavailable="onPlaybackUnavailable"
+        @resolved-alternative="onResolvedAlternative"
       />
       <div
         class="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-6 pb-6 pt-16"
@@ -200,7 +202,9 @@
         @need-sync="onPlayerNeedSync"
         @playing="onPlayerPlaying"
         @error="onPlayerError"
-        @external-fallback="onPlayerExternalFallback"
+        @external-fallback="onPlaybackUnavailable"
+        @playback-unavailable="onPlaybackUnavailable"
+        @resolved-alternative="onResolvedAlternative"
       />
       <div class="mt-4 flex items-end justify-between gap-4">
         <div class="min-w-0">
@@ -407,7 +411,6 @@ async function applyTrackToPlayer() {
 }
 
 let unregMusicBroadcast: (() => void) | undefined;
-let queuePollTimer: ReturnType<typeof setInterval> | undefined;
 
 async function refreshQueueAndApply() {
   try {
@@ -432,20 +435,47 @@ async function onPlayerNeedSync() {
   await refreshQueueAndApply();
 }
 
-async function onPlayerError() {
-  if (playerSyncBackend.value) {
-    scheduleBackendSync();
-    return;
+async function onResolvedAlternative(payload: {
+  track: YoutubePlayerTrack;
+  youtubeId: string;
+  title: string;
+}) {
+  try {
+    await music.updatePlaybackSource(
+      payload.track.id,
+      { youtubeId: payload.youtubeId, title: payload.title },
+      { businessSlug: effectiveSlug.value, useStaffApi: useStaffPlaybackApi.value },
+    );
+    liveTrack.value = {
+      ...payload.track,
+      youtubeId: payload.youtubeId,
+      title: payload.title,
+    };
+    toast.info('Reproduciendo versión alternativa disponible.');
+  } catch {
+    /* La alternativa sigue sonando localmente aunque falle el guardado. */
   }
-  await refreshQueueAndApply();
 }
 
-async function onPlayerExternalFallback() {
-  if (playerSyncBackend.value) {
-    scheduleBackendSync();
-    return;
+async function onPlaybackUnavailable() {
+  try {
+    if (useStaffPlaybackApi.value) {
+      await music.skip();
+    } else if (effectiveSlug.value) {
+      await music.skipPublic(effectiveSlug.value);
+    } else {
+      await refreshQueueAndApply();
+      return;
+    }
+    liveTrack.value = toTrack(music.nowPlaying);
+    await applyTrackToPlayer();
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
   }
-  await refreshQueueAndApply();
+}
+
+async function onPlayerError() {
+  await onPlaybackUnavailable();
 }
 
 let backendSyncChain: Promise<void> = Promise.resolve();
@@ -557,17 +587,6 @@ onMounted(async () => {
       }
     });
 
-    queuePollTimer = setInterval(() => {
-      if (isTvCastMode.value) return;
-      if (useStaffPlaybackApi.value) {
-        void music.fetchQueue();
-      } else if (effectiveSlug.value) {
-        void music.fetchPublicQueue(effectiveSlug.value);
-      } else if (auth.user?.businessId) {
-        void music.fetchQueue();
-      }
-    }, 3000);
-
     if (isTvPlayerMode.value || isTvCastMode.value) {
       void document.documentElement.requestFullscreen?.().catch(() => undefined);
     }
@@ -578,6 +597,5 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   unregMusicBroadcast?.();
-  if (queuePollTimer) clearInterval(queuePollTimer);
 });
 </script>

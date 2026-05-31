@@ -32,6 +32,9 @@ export class OrderMongoRepository extends OrderRepository {
     if (filter.tableId) query.tableId = new Types.ObjectId(filter.tableId);
     if (filter.sessionId) query.sessionId = filter.sessionId;
     if (filter.tableSessionId) query.tableSessionId = filter.tableSessionId;
+    if (filter.missingTableSession) {
+      query.$or = [{ tableSessionId: { $exists: false } }, { tableSessionId: null }];
+    }
     if (filter.from || filter.to) {
       query.createdAt = {};
       if (filter.from) (query.createdAt as Record<string, Date>).$gte = filter.from;

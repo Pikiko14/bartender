@@ -10,6 +10,7 @@ import {
   MusicRequestRepository,
 } from '../../domain/repositories/music-request.repository';
 import { RequestSongDto } from '../dto/music.dto';
+import { GetQueueUseCase } from './get-queue.use-case';
 import { presentMusicRequest } from '../presenters/music.presenter';
 
 @Injectable()
@@ -22,6 +23,7 @@ export class RequestSongUseCase {
     @Inject(MUSIC_REQUEST_REPOSITORY) private readonly requests: MusicRequestRepository,
     private readonly sessions: GuestSessionService,
     private readonly realtime: RealtimeService,
+    private readonly getQueue: GetQueueUseCase,
   ) {}
 
   async execute(dto: RequestSongDto) {
@@ -58,6 +60,8 @@ export class RequestSongUseCase {
     const created = await this.requests.create(request);
     const view = presentMusicRequest(created);
     this.realtime.emitToBusiness(session.businessId, SocketEvents.MUSIC_REQUESTED, view);
+    const queue = await this.getQueue.execute(session.businessId);
+    this.realtime.emitToBusiness(session.businessId, SocketEvents.MUSIC_QUEUE_UPDATED, queue);
     return view;
   }
 }

@@ -21,6 +21,7 @@ import { OrdersModule } from '@modules/orders/orders.module';
 import { MusicModule } from '@modules/music/music.module';
 import { AnalyticsModule } from '@modules/analytics/analytics.module';
 import { SubscriptionsModule } from '@modules/subscriptions/subscriptions.module';
+import { CustomersModule } from '@modules/customers/customers.module';
 import { UploadsModule } from '@infrastructure/uploads/uploads.module';
 
 @Module({
@@ -52,6 +53,7 @@ import { UploadsModule } from '@infrastructure/uploads/uploads.module';
     SessionsModule,
     MenuModule,
     OrdersModule,
+    CustomersModule,
     MusicModule,
     AnalyticsModule,
     SubscriptionsModule,

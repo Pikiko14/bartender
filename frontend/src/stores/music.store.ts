@@ -51,40 +51,34 @@ export const useMusicStore = defineStore('music', {
     async playNext() {
       const playing = await musicApi.playNext();
       if (playing !== undefined) this.nowPlaying = playing;
-      await this.fetchQueue();
       this.broadcastIfBound();
     },
     async skip() {
       const playing = await musicApi.skip();
       if (playing !== undefined) this.nowPlaying = playing;
-      await this.fetchQueue();
       this.broadcastIfBound();
     },
     async playRequest(id: string) {
       const playing = await musicApi.playRequest(id);
       this.nowPlaying = playing;
-      await this.fetchQueue();
       this.broadcastIfBound();
     },
 
     async playNextPublic(businessSlug: string) {
       const playing = await publicApi.publicPlayNext(businessSlug);
       if (playing !== undefined) this.nowPlaying = playing;
-      await this.fetchPublicQueue(businessSlug);
       this.broadcastIfBound();
     },
 
     async playRequestPublic(businessSlug: string, id: string) {
       const playing = await publicApi.publicPlayRequest(businessSlug, id);
       this.nowPlaying = playing;
-      await this.fetchPublicQueue(businessSlug);
       this.broadcastIfBound();
     },
 
     async syncPlaying(id: string) {
       const playing = await musicApi.syncPlaying(id);
       this.nowPlaying = playing;
-      await this.fetchQueue();
       this.broadcastIfBound();
       return playing;
     },
@@ -92,9 +86,30 @@ export const useMusicStore = defineStore('music', {
     async syncPlayingPublic(businessSlug: string, id: string) {
       const playing = await publicApi.publicSyncPlaying(businessSlug, id);
       this.nowPlaying = playing;
-      await this.fetchPublicQueue(businessSlug);
       this.broadcastIfBound();
       return playing;
+    },
+
+    async skipPublic(businessSlug: string) {
+      const playing = await publicApi.publicSkip(businessSlug);
+      if (playing !== undefined) this.nowPlaying = playing;
+      this.broadcastIfBound();
+      return playing;
+    },
+
+    async updatePlaybackSource(
+      id: string,
+      body: { youtubeId: string; title: string; thumbnail?: string | null; channelTitle?: string | null },
+      opts?: { businessSlug?: string; useStaffApi?: boolean },
+    ) {
+      const updated = opts?.useStaffApi
+        ? await musicApi.updatePlaybackSource(id, body)
+        : await publicApi.publicUpdatePlaybackSource(opts!.businessSlug!, id, body);
+      if (this.nowPlaying?.id === id) this.nowPlaying = updated;
+      const idx = this.queue.findIndex((q) => q.id === id);
+      if (idx >= 0) this.queue[idx] = updated;
+      this.broadcastIfBound();
+      return updated;
     },
 
     /** Marca en backend la pista que suena (status → playing). */
@@ -139,18 +154,13 @@ export const useMusicStore = defineStore('music', {
       if (this.bound) return;
       this.bound = true;
 
-      realtime.on<MusicRequest>(SocketEvents.MUSIC_REQUESTED, (req) => {
-        if (!this.pending.find((p) => p.id === req.id)) this.pending.unshift(req);
-      });
       realtime.on<MusicQueue>(SocketEvents.MUSIC_QUEUE_UPDATED, (q) => {
         this.applyQueue(q);
+        this.broadcastIfBound();
       });
       realtime.on<MusicRequest | null>(SocketEvents.MUSIC_PLAYING, (req) => {
         this.nowPlaying = req;
-        void this.fetchQueue();
-      });
-      realtime.on(SocketEvents.MUSIC_SKIPPED, () => {
-        void this.fetchQueue();
+        this.broadcastIfBound();
       });
     },
 

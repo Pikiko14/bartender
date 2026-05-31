@@ -11,6 +11,7 @@ export class TableSessionMapper {
       status: doc.status,
       openedAt: doc.openedAt,
       closedAt: doc.closedAt,
+      customerId: doc.customerId?.toString() ?? null,
     });
   }
 
@@ -22,6 +23,7 @@ export class TableSessionMapper {
       status: p.status,
       openedAt: p.openedAt,
       closedAt: p.closedAt ?? null,
+      customerId: p.customerId ? new Types.ObjectId(p.customerId) : null,
     };
   }
 }

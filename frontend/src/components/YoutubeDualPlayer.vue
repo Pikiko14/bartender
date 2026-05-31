@@ -85,6 +85,7 @@ import { loadYoutubeIframeApi } from '@/composables/useYoutubeIframeApi';
 import { useToast } from '@/composables/useToast';
 import { useMusicStore } from '@/stores/music.store';
 import {
+  clearTrackResolution,
   getCachedTrackResolution,
   handleBlockedVideo,
   isEmbedBlockedError,
@@ -131,6 +132,8 @@ const emit = defineEmits<{
   ended: [track: YoutubePlayerTrack];
   error: [track: YoutubePlayerTrack, code: number];
   'external-fallback': [track: YoutubePlayerTrack];
+  'resolved-alternative': [payload: { track: YoutubePlayerTrack; youtubeId: string; title: string }];
+  'playback-unavailable': [track: YoutubePlayerTrack];
   'need-sync': [];
   playing: [track: YoutubePlayerTrack];
   'queue-empty': [];
@@ -671,11 +674,18 @@ async function preparePlaybackTrack(
     const result = await resolveTrackForPlayback(toPlaybackSource(track));
 
     if (result.ok) {
+      if (result.alternative) {
+        emit('resolved-alternative', {
+          track,
+          youtubeId: result.youtubeId,
+          title: result.title,
+        });
+      }
       return trackFromResolved(track, result.youtubeId, result.title);
     }
 
     if (!silent) {
-      toast.warning('Este tema no puede reproducirse dentro de la app. Abriendo YouTube.');
+      toast.warning('No hay versión reproducible embebida de este tema.');
     }
     try {
       slotPlayer(activeSlot.value)?.stopVideo();
@@ -683,6 +693,7 @@ async function preparePlaybackTrack(
     } catch {
       /* ignore */
     }
+    emit('playback-unavailable', track);
     emit('external-fallback', track);
     return null;
   } finally {
@@ -706,9 +717,16 @@ async function handleEmbedBlocked(track: YoutubePlayerTrack, code: number) {
 
   fallbackLoading.value = true;
   try {
-    const result = await handleBlockedVideo(toPlaybackSource(track));
+    const result = await handleBlockedVideo(toPlaybackSource(track), { openExternal: !props.djMode });
 
     if (result.ok) {
+      if (result.alternative) {
+        emit('resolved-alternative', {
+          track,
+          youtubeId: result.youtubeId,
+          title: result.title,
+        });
+      }
       await activateTrackInner({
         ...track,
         youtubeId: result.youtubeId,
@@ -717,11 +735,13 @@ async function handleEmbedBlocked(track: YoutubePlayerTrack, code: number) {
       return;
     }
 
-    toast.warning('Este tema no puede reproducirse dentro de la app. Abriendo YouTube.');
+    toast.warning('No hay versión reproducible embebida de este tema.');
+    emit('playback-unavailable', track);
     emit('external-fallback', track);
     if (props.syncToBackend) {
-      emit('need-sync');
-    } else if (props.nextTrack) {
+      return;
+    }
+    if (props.nextTrack) {
       await skipToNext(true);
     } else {
       await finishCurrentTrack(true);
@@ -737,10 +757,9 @@ async function activateTrack(track: YoutubePlayerTrack) {
 
   const prepared = await preparePlaybackTrack(track);
   if (!prepared) {
-    if (props.syncToBackend) {
-      emit('need-sync');
-    } else if (props.nextTrack) {
-      await skipToNext(true);
+    if (!props.syncToBackend) {
+      if (props.nextTrack) await skipToNext(true);
+      else await finishCurrentTrack(true);
     }
     return;
   }
@@ -993,6 +1012,14 @@ async function applyTrackChange(track: YoutubePlayerTrack) {
 }
 
 defineExpose({ forceSkip, resumePlayback, togglePlayPause, switchToTrack, isPlayingTrack });
+
+watch(
+  () => `${props.currentTrack?.id ?? ''}:${props.currentTrack?.youtubeId ?? ''}`,
+  (key, prev) => {
+    if (!props.currentTrack?.id || key === prev) return;
+    clearTrackResolution(props.currentTrack.id);
+  },
+);
 
 watch(
   () => props.currentTrack?.id,

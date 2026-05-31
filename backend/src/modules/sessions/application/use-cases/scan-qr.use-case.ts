@@ -1,10 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { BusinessRuleViolationException, EntityNotFoundException } from '@core/domain/exceptions';
 import { GetBusinessUseCase } from '@modules/business/application/use-cases/get-business.use-case';
 import {
   presentBusiness,
   BusinessView,
 } from '@modules/business/application/presenters/business.presenter';
+import {
+  CUSTOMER_REPOSITORY,
+  CustomerRepository,
+} from '@modules/customers/domain/repositories/customer.repository';
+import { presentCustomer, CustomerView } from '@modules/customers/application/presenters/customer.presenter';
 import { ManageTablesUseCase } from '@modules/tables/application/use-cases/manage-tables.use-case';
 import { OpenTableSessionUseCase } from '@modules/tables/application/use-cases/open-table-session.use-case';
 import { TableSessionView } from '@modules/tables/application/presenters/table-session.presenter';
@@ -16,6 +21,8 @@ export interface ScanResult {
   business: BusinessView;
   table: TableView;
   tableSession: TableSessionView;
+  customer: CustomerView | null;
+  requiresCustomerRegistration: boolean;
   resumed: boolean;
 }
 
@@ -30,6 +37,7 @@ export class ScanQrUseCase {
     private readonly manageTables: ManageTablesUseCase,
     private readonly openTableSession: OpenTableSessionUseCase,
     private readonly sessions: GuestSessionService,
+    @Inject(CUSTOMER_REPOSITORY) private readonly customers: CustomerRepository,
   ) {}
 
   async execute(
@@ -46,10 +54,13 @@ export class ScanQrUseCase {
     if (resumeSessionId) {
       const resumed = await this.tryResume(business.id, table.id, resumeSessionId);
       if (resumed) {
+        const customer = await this.loadCustomer(resumed.tableSession);
         return {
           ...resumed,
           business: presentBusiness(business),
           table: presentTable(table),
+          customer,
+          requiresCustomerRegistration: !customer && resumed.tableSession.status === 'open',
           resumed: true,
         };
       }
@@ -57,14 +68,23 @@ export class ScanQrUseCase {
 
     const tableSession = await this.openTableSession.execute(business.id, table.id);
     const session = await this.sessions.create(business.id, table.id, tableSession.id);
+    const customer = await this.loadCustomer(tableSession);
 
     return {
       session,
       business: presentBusiness(business),
       table: presentTable(table),
       tableSession,
+      customer,
+      requiresCustomerRegistration: !customer && tableSession.status === 'open',
       resumed: false,
     };
+  }
+
+  private async loadCustomer(tableSession: TableSessionView): Promise<CustomerView | null> {
+    if (!tableSession.customerId) return null;
+    const customer = await this.customers.findById(tableSession.customerId);
+    return customer ? presentCustomer(customer) : null;
   }
 
   private async tryResume(

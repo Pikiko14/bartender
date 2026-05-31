@@ -5,6 +5,7 @@ export abstract class TableSessionRepository {
   abstract findById(id: string): Promise<TableSession | null>;
   abstract findOpenByTable(businessId: string, tableId: string): Promise<TableSession | null>;
   abstract findOpenByBusiness(businessId: string): Promise<TableSession[]>;
+  abstract findClosedByBusiness(businessId: string, limit?: number): Promise<TableSession[]>;
   abstract update(session: TableSession): Promise<TableSession>;
 }
 

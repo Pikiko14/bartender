@@ -62,6 +62,17 @@ export class MusicRequest {
   skip(): void {
     this.props.status = MusicRequestStatus.SKIPPED;
   }
+  updatePlaybackSource(source: {
+    youtubeId: string;
+    title: string;
+    thumbnail?: string | null;
+    channelTitle?: string | null;
+  }): void {
+    this.props.youtubeId = source.youtubeId;
+    this.props.title = source.title;
+    if (source.thumbnail !== undefined) this.props.thumbnail = source.thumbnail;
+    if (source.channelTitle !== undefined) this.props.channelTitle = source.channelTitle;
+  }
   setPriority(priority: number): void {
     this.props.priority = priority;
   }

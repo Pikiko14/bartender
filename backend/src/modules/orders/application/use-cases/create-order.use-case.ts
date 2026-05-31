@@ -45,6 +45,11 @@ export class CreateOrderUseCase {
         'La mesa está cerrada. Escanea el QR de nuevo para abrir una nueva cuenta.',
       );
     }
+    if (!tableSession.customerId) {
+      throw new BusinessRuleViolationException(
+        'Registra tu documento y nombre antes de pedir.',
+      );
+    }
     await this.assertNotFlooding(dto.sessionId);
 
     const requestedIds = dto.items.map((i) => i.menuItemId);

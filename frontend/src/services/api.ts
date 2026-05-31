@@ -95,12 +95,35 @@ export const ordersApi = {
   updateStatus: (id: string, status: OrderStatus) =>
     unwrap<Order>(http.patch(`/orders/${id}/status`, { status })),
   openTableBills: () => unwrap<import('@/shared/types').TableBill[]>(http.get('/orders/table-bills/open')),
+  closedTableBills: (limit = 50) =>
+    unwrap<import('@/shared/types').TableBill[]>(
+      http.get('/orders/table-bills/closed', { params: { limit } }),
+    ),
   tableBill: (tableSessionId: string) =>
     unwrap<import('@/shared/types').TableBill>(http.get(`/orders/table-bills/${tableSessionId}`)),
   closeTableBill: (tableSessionId: string) =>
     unwrap<import('@/shared/types').TableBill>(
       http.post(`/orders/table-bills/${tableSessionId}/close`, {}),
     ),
+  openTableBill: (tableId: string) =>
+    unwrap<import('@/shared/types').TableBill>(
+      http.post(`/orders/table-bills/for-table/${tableId}/open`, {}),
+    ),
+  assignTableCustomer: (body: {
+    tableId: string;
+    tableSessionId?: string | null;
+    customerId?: string | null;
+    create?: { name: string; document: string; phone?: string; email?: string; notes?: string };
+  }) =>
+    unwrap<import('@/shared/types').TableBill>(http.patch('/orders/table-bills/customer', body)),
+};
+
+// ---- Customers ----
+export const customersApi = {
+  list: (q?: string) =>
+    unwrap<import('@/shared/types').Customer[]>(http.get('/customers', { params: q ? { q } : {} })),
+  create: (body: { name: string; document: string; phone?: string; email?: string; notes?: string }) =>
+    unwrap<import('@/shared/types').Customer>(http.post('/customers', body)),
 };
 
 // ---- Music (staff) ----
@@ -115,6 +138,10 @@ export const musicApi = {
   playRequest: (id: string) => unwrap<MusicRequest>(http.post(`/music/requests/${id}/play`, {})),
   syncPlaying: (id: string) =>
     unwrap<MusicRequest>(http.post(`/music/requests/${id}/sync-playing`, {})),
+  updatePlaybackSource: (
+    id: string,
+    body: { youtubeId: string; title: string; thumbnail?: string | null; channelTitle?: string | null },
+  ) => unwrap<MusicRequest>(http.patch(`/music/requests/${id}/playback-source`, body)),
 };
 
 // ---- Analytics ----
@@ -128,6 +155,10 @@ export const publicApi = {
   scan: (businessSlug: string, tableSlug: string, resumeSessionId?: string) =>
     unwrap<ScanResult>(
       http.post('/public/sessions/scan', { businessSlug, tableSlug, resumeSessionId }),
+    ),
+  registerCustomer: (body: { sessionId: string; name: string; document: string }) =>
+    unwrap<{ customer: import('@/shared/types').Customer; tableSession: import('@/shared/types').TableSession }>(
+      http.post('/public/sessions/register-customer', body),
     ),
   getSession: (sessionId: string) => unwrap<GuestSession>(http.get(`/public/sessions/${sessionId}`)),
   menu: (businessSlug: string) => unwrap<MenuCategory[]>(http.get(`/public/menu/${businessSlug}`)),
@@ -165,6 +196,13 @@ export const publicApi = {
     unwrap<MusicRequest>(http.post(`/public/music/${businessSlug}/requests/${id}/play`, {})),
   publicSyncPlaying: (businessSlug: string, id: string) =>
     unwrap<MusicRequest>(http.post(`/public/music/${businessSlug}/requests/${id}/sync-playing`, {})),
+  publicSkip: (businessSlug: string) =>
+    unwrap<MusicRequest | null>(http.post(`/public/music/${businessSlug}/skip`, {})),
+  publicUpdatePlaybackSource: (
+    businessSlug: string,
+    id: string,
+    body: { youtubeId: string; title: string; thumbnail?: string | null; channelTitle?: string | null },
+  ) => unwrap<MusicRequest>(http.patch(`/public/music/${businessSlug}/requests/${id}/playback-source`, body)),
 };
 
 // ---- Planes y suscripciones ----

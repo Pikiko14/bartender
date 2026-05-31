@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { CustomersModule } from '@modules/customers/customers.module';
 import { MenuModule } from '@modules/menu/menu.module';
 import { SessionsModule } from '@modules/sessions/sessions.module';
 import { TablesModule } from '@modules/tables/tables.module';
@@ -8,9 +9,13 @@ import { CreateOrderUseCase } from './application/use-cases/create-order.use-cas
 import { QueryOrdersUseCase } from './application/use-cases/query-orders.use-case';
 import { UpdateOrderStatusUseCase } from './application/use-cases/update-order-status.use-case';
 import {
+  AdoptOrphanOrdersUseCase,
+  AssignTableSessionCustomerUseCase,
   CloseTableSessionUseCase,
   GetTableBillUseCase,
   ListOpenTableBillsUseCase,
+  ListClosedTableBillsUseCase,
+  OpenTableBillUseCase,
 } from './application/use-cases/table-bill.use-case';
 import { OrderTableEnricher } from './application/services/order-table.enricher';
 import { OrderItemImageEnricher } from './application/services/order-item-image.enricher';
@@ -25,6 +30,7 @@ import { OrderModel, OrderSchema } from './infrastructure/schemas/order.schema';
     MenuModule,
     SessionsModule,
     TablesModule,
+    CustomersModule,
   ],
   controllers: [OrdersController, PublicOrdersController],
   providers: [
@@ -34,6 +40,10 @@ import { OrderModel, OrderSchema } from './infrastructure/schemas/order.schema';
     GetTableBillUseCase,
     CloseTableSessionUseCase,
     ListOpenTableBillsUseCase,
+    ListClosedTableBillsUseCase,
+    AdoptOrphanOrdersUseCase,
+    OpenTableBillUseCase,
+    AssignTableSessionCustomerUseCase,
     OrderTableEnricher,
     OrderItemImageEnricher,
     { provide: ORDER_REPOSITORY, useClass: OrderMongoRepository },

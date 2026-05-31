@@ -8,6 +8,7 @@ import {
   MusicRequestRepository,
 } from '../../domain/repositories/music-request.repository';
 import { GetQueueUseCase } from './get-queue.use-case';
+import { ResolveMusicPlaybackUseCase } from './resolve-music-playback.use-case';
 import { MusicRequestView, presentMusicRequest } from '../presenters/music.presenter';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class PlaybackUseCase {
     @Inject(MUSIC_REQUEST_REPOSITORY) private readonly requests: MusicRequestRepository,
     private readonly realtime: RealtimeService,
     private readonly getQueue: GetQueueUseCase,
+    private readonly resolvePlayback: ResolveMusicPlaybackUseCase,
   ) {}
 
   /** Reproduce la siguiente canción aprobada (FIFO con prioridad/votos). */
@@ -29,19 +31,26 @@ export class PlaybackUseCase {
     const approved = await this.requests.findByBusinessAndStatuses(businessId, [
       MusicRequestStatus.APPROVED,
     ]);
-    const next = approved[0];
-    if (!next) {
+
+    for (const candidate of approved) {
+      const playable = await this.resolvePlayback.ensurePlayable(candidate);
+      if (!playable) {
+        candidate.skip();
+        await this.requests.update(candidate);
+        continue;
+      }
+
+      playable.markPlaying();
+      const updated = await this.requests.update(playable);
+      const view = presentMusicRequest(updated);
+      this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, view);
       await this.emitQueue(businessId);
-      this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, null);
-      return null;
+      return view;
     }
 
-    next.markPlaying();
-    const updated = await this.requests.update(next);
-    const view = presentMusicRequest(updated);
-    this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, view);
     await this.emitQueue(businessId);
-    return view;
+    this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, null);
+    return null;
   }
 
   async skip(businessId: string): Promise<MusicRequestView | null> {
@@ -81,7 +90,21 @@ export class PlaybackUseCase {
 
     const current = await this.requests.findNowPlaying(businessId);
     if (current?.id === requestId) {
-      return presentMusicRequest(current);
+      const playable = await this.resolvePlayback.ensurePlayable(current);
+      if (!playable) {
+        current.skip();
+        await this.requests.update(current);
+        const next = await this.playNext(businessId);
+        if (!next) {
+          throw new BusinessRuleViolationException('No hay versión reproducible de esta canción.');
+        }
+        return next;
+      }
+      const updated = await this.requests.update(playable);
+      const view = presentMusicRequest(updated);
+      this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, view);
+      await this.emitQueue(businessId);
+      return view;
     }
 
     if (current) {
@@ -103,8 +126,19 @@ export class PlaybackUseCase {
       );
     }
 
-    request.markPlaying();
-    const updated = await this.requests.update(request);
+    const playable = await this.resolvePlayback.ensurePlayable(request);
+    if (!playable) {
+      request.skip();
+      await this.requests.update(request);
+      const next = await this.playNext(businessId);
+      if (!next) {
+        throw new BusinessRuleViolationException('No hay versión reproducible de esta canción.');
+      }
+      return next;
+    }
+
+    playable.markPlaying();
+    const updated = await this.requests.update(playable);
     const view = presentMusicRequest(updated);
     this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, view);
     await this.emitQueue(businessId);

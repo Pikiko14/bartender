@@ -8,6 +8,7 @@ export interface TableSessionProps {
   status: TableSessionStatus;
   openedAt: Date;
   closedAt?: Date | null;
+  customerId?: string | null;
 }
 
 export class TableSession {
@@ -31,6 +32,9 @@ export class TableSession {
   get closedAt(): Date | null {
     return this.props.closedAt ?? null;
   }
+  get customerId(): string | null {
+    return this.props.customerId ?? null;
+  }
 
   isOpen(): boolean {
     return this.props.status === TableSessionStatus.OPEN;
@@ -42,6 +46,10 @@ export class TableSession {
     }
     this.props.status = TableSessionStatus.CLOSED;
     this.props.closedAt = new Date();
+  }
+
+  assignCustomer(customerId: string | null): void {
+    this.props.customerId = customerId;
   }
 
   toPrimitives(): TableSessionProps {
