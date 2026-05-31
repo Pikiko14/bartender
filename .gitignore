@@ -38,6 +38,4 @@ Thumbs.db
 .pnpm-store/
 *.local
 
-# Uploaded files
-uploads/
-backend/uploads/
+
