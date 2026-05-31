@@ -1,0 +1,23 @@
+# Frontend desde la raíz del monorepo (Root Directory vacío + Dockerfile Path = Dockerfile.frontend)
+FROM node:22-alpine AS build
+WORKDIR /app
+ARG VITE_API_URL
+ARG VITE_SOCKET_URL
+ARG VITE_YOUTUBE_API_KEY
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_SOCKET_URL=$VITE_SOCKET_URL
+ENV VITE_YOUTUBE_API_KEY=$VITE_YOUTUBE_API_KEY
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
+
+FROM nginx:1.27-alpine AS production
+RUN apk add --no-cache gettext
+COPY frontend/nginx.railway.conf /etc/nginx/templates/default.conf.template
+COPY frontend/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+COPY --from=build /app/dist /usr/share/nginx/html
+ENV PORT=8080
+EXPOSE 8080
+ENTRYPOINT ["/docker-entrypoint.sh"]

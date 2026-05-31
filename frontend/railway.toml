@@ -1,13 +1,9 @@
-# =============================================================================
 # Frontend — Railway
-# Dashboard → Settings → Root Directory: frontend
-# Variables de build (Settings → Variables):
-#   VITE_API_URL=https://<tu-backend>.up.railway.app
-#   VITE_SOCKET_URL=https://<tu-backend>.up.railway.app
-#   VITE_YOUTUBE_API_KEY=...
-# =============================================================================
+# Root Directory OBLIGATORIO: frontend
+# NO uses frontend/Dockerfile (ese es solo para docker compose local)
 [build]
-builder = "RAILPACK"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.railway"
 
 [deploy]
 restartPolicyType = "ON_FAILURE"
