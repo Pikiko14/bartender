@@ -1,4 +1,5 @@
 # Frontend — Railway (Root Directory = frontend)
+# NO uses el Dockerfile.railway de la raíz del repo (ese es para Root Directory vacío)
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile.railway"
