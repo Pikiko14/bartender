@@ -1,4 +1,5 @@
-# Frontend — mismo contenido que /Dockerfile.railway (alias)
+# Frontend — Railway con Root Directory vacío (raíz del repo)
+# Servicio frontend → Dockerfile Path: Dockerfile.railway
 FROM node:22-alpine AS build
 WORKDIR /app
 ARG VITE_API_URL

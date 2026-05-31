@@ -1,6 +1,4 @@
-# Frontend — Railway
-# Root Directory OBLIGATORIO: frontend
-# NO uses frontend/Dockerfile (ese es solo para docker compose local)
+# Frontend — Railway (Root Directory = frontend)
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile.railway"
