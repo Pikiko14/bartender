@@ -3,7 +3,7 @@ FROM node:22-alpine AS build
 WORKDIR /app
 COPY package.json ./
 COPY . .
-RUN npm run build
+RUN npm run build:backend
 
 FROM node:22-alpine AS production
 ENV NODE_ENV=production
