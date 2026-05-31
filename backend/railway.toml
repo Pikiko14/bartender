@@ -1,3 +1,6 @@
+# Railway — backend con Root Directory = backend
+# Root Directory: backend
+# Dockerfile Path: Dockerfile
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"

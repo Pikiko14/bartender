@@ -1,11 +1,9 @@
-# Configuración para desplegar el BACKEND desde la raíz del monorepo en Railway.
-# Si usas Root Directory = backend, usa backend/railway.toml en su lugar.
+# Railway — backend desde la raíz del monorepo.
+# Root Directory: vacío (.)
+# Dockerfile Path: Dockerfile.backend  (NO uses backend/Dockerfile)
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "backend/Dockerfile"
-
-[build.buildArgs]
-PACKAGE_DIR = "backend"
+dockerfilePath = "Dockerfile.backend"
 
 [deploy]
 startCommand = "node dist/main.js"
