@@ -9,7 +9,6 @@ FROM node:22-alpine AS build
 ARG PACKAGE_DIR
 WORKDIR /app
 COPY ${PACKAGE_DIR}/package.json ${PACKAGE_DIR}/package-lock.json ./
-RUN npm ci
 COPY ${PACKAGE_DIR}/ .
 RUN npm run build
 
@@ -19,7 +18,6 @@ ARG PACKAGE_DIR
 ENV NODE_ENV=production
 WORKDIR /app
 COPY ${PACKAGE_DIR}/package.json ${PACKAGE_DIR}/package-lock.json ./
-RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=build /app/dist ./dist
 EXPOSE 3000
 CMD ["node", "dist/main.js"]
