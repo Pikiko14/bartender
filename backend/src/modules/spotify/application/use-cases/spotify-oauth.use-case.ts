@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import { createHmac, randomBytes } from 'crypto';
+import { createHmac, createHash, randomBytes } from 'crypto';
 import {
   BusinessRuleViolationException,
   EntityNotFoundException,
@@ -74,6 +74,8 @@ export class SpotifyOAuthUseCase {
     }
 
     const accessToken = tokenData.access_token;
+    // No loguear el token en claro (credencial). Usamos huella corta para correlación.
+    const tokenFp = createHash('sha256').update(accessToken).digest('hex').slice(0, 12);
     let profile: { id: string; display_name?: string };
     try {
       const { data } = await axios.get<{ id: string; display_name?: string }>(
@@ -83,8 +85,31 @@ export class SpotifyOAuthUseCase {
       profile = data;
     } catch (err) {
       const message = this.extractError(err);
-      this.logger.error(`[Spotify] fetch /v1/me failed business=${business.id}: ${message}`);
-      throw new BusinessRuleViolationException(`Spotify OAuth: no se pudo leer /v1/me: ${message}`);
+      if (axios.isAxiosError(err)) {
+        // Volcamos el cuerpo y cabeceras devueltas por Spotify para diagnosticar el 403.
+        // Redactamos cualquier cosa potencialmente sensible.
+        const status = err.response?.status;
+        const data = err.response?.data;
+        const headers = err.response?.headers;
+        const safeHeaders =
+          headers && typeof headers === 'object'
+            ? Object.fromEntries(
+                Object.entries(headers).filter(([k]) => k.toLowerCase() !== 'authorization'),
+              )
+            : headers;
+
+        this.logger.error(
+          `[Spotify] /v1/me failed business=${business.id} tokenFp=${tokenFp} status=${status ?? '—'}`,
+        );
+        this.logger.error(`[Spotify] /v1/me data=${JSON.stringify(data)}`);
+        this.logger.error(`[Spotify] /v1/me headers=${JSON.stringify(safeHeaders)}`);
+      } else {
+        this.logger.error(`[Spotify] /v1/me failed business=${business.id} tokenFp=${tokenFp}: ${message}`);
+      }
+
+      throw new BusinessRuleViolationException(
+        `Spotify OAuth: no se pudo leer /v1/me (status ${axios.isAxiosError(err) ? err.response?.status ?? '—' : '—'}).`,
+      );
     }
 
     business.setSpotifyConnection({
