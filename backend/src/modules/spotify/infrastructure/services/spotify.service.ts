@@ -68,6 +68,10 @@ export class SpotifyTokenService {
         }),
         { headers: { Authorization: this.authHeader(), 'Content-Type': 'application/x-www-form-urlencoded' } },
       );
+      // Log seguro para debug: no exponer tokens.
+      this.logger.log(
+        `[Spotify] exchangeCode ok redirectUri=${redirectUri} token_type=${data.token_type} expires_in=${data.expires_in}s has_refresh_token=${!!data.refresh_token} scope="${data.scope ?? ''}"`,
+      );
       return data;
     } catch (err) {
       const msg = this.extractError(err);

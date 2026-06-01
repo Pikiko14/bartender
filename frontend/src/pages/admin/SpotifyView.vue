@@ -75,14 +75,13 @@
           </label>
           <label
             class="flex cursor-pointer items-center gap-3 rounded-lg bg-ink-800 p-3"
-            :class="!status?.connected ? 'opacity-50' : ''"
+            :class="!status?.connected ? 'opacity-90' : ''"
           >
             <input
               v-model="providerChoice"
               type="radio"
               value="SPOTIFY"
               name="provider"
-              :disabled="!status?.connected"
             />
             <span>Spotify</span>
           </label>
@@ -165,6 +164,11 @@ async function disconnect() {
 async function saveProvider() {
   busy.value = true;
   try {
+    if (providerChoice.value === 'SPOTIFY' && !status.value?.connected) {
+      const { url } = await spotifyApi.connect();
+      window.location.href = url;
+      return;
+    }
     await spotifyApi.setMusicProvider(providerChoice.value);
     await loadStatus();
     toast.success('Proveedor musical actualizado.');
