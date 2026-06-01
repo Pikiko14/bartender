@@ -86,6 +86,26 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/admin/PlansView.vue'),
         meta: { title: 'Plan' },
       },
+      {
+        path: 'settings',
+        component: () => import('@/pages/admin/settings/SettingsLayout.vue'),
+        meta: { title: 'Configuración' },
+        children: [
+          { path: '', redirect: { name: 'settings-profile' } },
+          {
+            path: 'profile',
+            name: 'settings-profile',
+            component: () => import('@/pages/admin/settings/ProfileSettingsView.vue'),
+            meta: { title: 'Configuración · Perfil' },
+          },
+          {
+            path: 'business',
+            name: 'settings-business',
+            component: () => import('@/pages/admin/settings/BusinessSettingsView.vue'),
+            meta: { title: 'Configuración · Negocio' },
+          },
+        ],
+      },
     ],
   },
   {
@@ -140,6 +160,9 @@ router.beforeEach((to) => {
   }
   if (to.meta.guestOnly && auth.isAuthenticated) {
     return { name: 'dashboard' };
+  }
+  if (to.name === 'settings-business' && !auth.can('business:manage')) {
+    return { name: 'settings-profile' };
   }
   return true;
 });

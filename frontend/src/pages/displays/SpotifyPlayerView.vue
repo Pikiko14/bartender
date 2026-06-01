@@ -42,7 +42,7 @@
           <button type="button" class="btn-cyan text-sm" :disabled="connecting" @click="reconnect">
             {{ connecting ? 'Conectando…' : 'Reconectar' }}
           </button>
-          <RouterLink v-if="!isPublic" to="/app/music" class="btn-ghost text-sm">
+          <RouterLink v-if="!isPublic" to="/app/settings/profile" class="btn-ghost text-sm">
             ← Configuración música
           </RouterLink>
         </div>

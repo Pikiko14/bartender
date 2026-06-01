@@ -58,8 +58,16 @@
       >
         <button class="text-slate-400 lg:hidden" @click="sidebarOpen = !sidebarOpen">☰</button>
         <div class="flex items-center gap-3">
-          <span class="hidden text-sm text-slate-400 sm:block">{{ auth.user?.name }}</span>
+          <RouterLink
+            to="/app/settings/profile"
+            class="hidden text-sm text-slate-400 hover:text-slate-200 sm:block"
+          >
+            {{ auth.user?.name }}
+          </RouterLink>
           <span class="badge bg-ink-700 text-slate-300">{{ auth.user?.role }}</span>
+          <RouterLink to="/app/settings" class="btn-ghost px-3 py-1.5 text-sm" title="Configuración">
+            ⚙
+          </RouterLink>
           <button class="btn-ghost px-3 py-1.5 text-sm" @click="logout">Salir</button>
         </div>
       </header>
@@ -106,7 +114,7 @@ const route = useRoute();
 const sidebarOpen = ref(false);
 const newBizName = ref('');
 
-const links = [
+const links: { to: string; label: string; icon: string; perm?: string }[] = [
   { to: '/app/dashboard', label: 'Dashboard', icon: '📊', perm: 'order:view' },
   { to: '/app/orders', label: 'Pedidos', icon: '🧾', perm: 'order:view' },
   { to: '/app/menu', label: 'Menú', icon: '🍔', perm: 'menu:view' },
@@ -115,9 +123,12 @@ const links = [
   { to: '/app/music', label: 'Música', icon: '🎵', perm: 'music:moderate' },
   { to: '/app/plans', label: 'Plan', icon: '💎', perm: 'business:manage' },
   { to: '/app/analytics', label: 'Analytics', icon: '📈', perm: 'analytics:view' },
+  { to: '/app/settings', label: 'Configuración', icon: '⚙️' },
 ];
 
-const visibleLinks = computed(() => links.filter((l) => auth.can(l.perm)));
+const visibleLinks = computed(() =>
+  links.filter((l) => !l.perm || auth.can(l.perm)),
+);
 const needsBusiness = computed(() => auth.hasRole('OWNER') && !auth.user?.businessId);
 const djShareHref = computed(() =>
   business.current?.slug ? djShareUrl(business.current.slug) : '',

@@ -24,5 +24,12 @@ export const useBusinessStore = defineStore('business', {
     setCurrent(business: Business) {
       this.current = business;
     },
+    async update(id: string, body: Partial<Pick<Business, 'name' | 'description' | 'active' | 'logo' | 'cover'>>) {
+      const business = await businessApi.update(id, body);
+      const index = this.businesses.findIndex((b) => b.id === id);
+      if (index >= 0) this.businesses[index] = business;
+      if (this.current?.id === id) this.current = business;
+      return business;
+    },
   },
 });

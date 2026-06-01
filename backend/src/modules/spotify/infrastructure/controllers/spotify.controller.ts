@@ -52,13 +52,13 @@ export class SpotifyController {
   ) {
     const appUrl = this.config.get<string>('mercadoPago.publicAppUrl') ?? 'http://localhost:5173';
     if (error || !code || !state) {
-      return res.redirect(`${appUrl}/app/music?error=oauth_denied`);
+      return res.redirect(`${appUrl}/app/settings/business?error=oauth_denied`);
     }
     try {
       await this.oauth.handleCallback(code, state);
-      return res.redirect(`${appUrl}/app/music?connected=1`);
+      return res.redirect(`${appUrl}/app/settings/business?connected=1`);
     } catch {
-      return res.redirect(`${appUrl}/app/music?error=oauth_failed`);
+      return res.redirect(`${appUrl}/app/settings/business?error=oauth_failed`);
     }
   }
 
