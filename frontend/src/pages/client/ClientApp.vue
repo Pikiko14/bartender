@@ -22,13 +22,21 @@
         <div class="card mx-auto w-full max-w-sm p-6">
           <h2 class="text-lg font-bold">Identificación</h2>
           <p class="mt-1 text-sm text-slate-400">
-            Ingresá tu documento y nombre para abrir la cuenta de la mesa.
+            {{
+              registrationStep === 'document'
+                ? 'Ingresá tu documento para abrir la cuenta de la mesa.'
+                : 'No encontramos tu documento. Ingresá tu nombre para continuar.'
+            }}
           </p>
           <p v-if="sessionReopened" class="mt-2 text-xs text-amber-300">
             La cuenta anterior fue cerrada. Completá tus datos para empezar de nuevo.
           </p>
 
-          <form class="mt-5 space-y-3" @submit.prevent="submitRegistration">
+          <form
+            v-if="registrationStep === 'document'"
+            class="mt-5 space-y-3"
+            @submit.prevent="submitDocument"
+          >
             <div>
               <label class="text-xs text-slate-500">Documento de identidad *</label>
               <input
@@ -36,7 +44,26 @@
                 class="input mt-1 w-full"
                 placeholder="Ej. 30123456"
                 autocomplete="off"
+                inputmode="numeric"
                 required
+              />
+            </div>
+            <button
+              type="submit"
+              class="btn-primary mt-2 w-full"
+              :disabled="registering || !canSubmitDocument"
+            >
+              {{ registering ? 'Verificando…' : 'Continuar' }}
+            </button>
+          </form>
+
+          <form v-else class="mt-5 space-y-3" @submit.prevent="submitRegistration">
+            <div>
+              <label class="text-xs text-slate-500">Documento de identidad</label>
+              <input
+                :value="guestForm.document"
+                class="input mt-1 w-full bg-ink-800 text-slate-400"
+                readonly
               />
             </div>
             <div>
@@ -47,15 +74,26 @@
                 placeholder="Tu nombre"
                 autocomplete="name"
                 required
+                autofocus
               />
             </div>
-            <button
-              type="submit"
-              class="btn-primary mt-2 w-full"
-              :disabled="registering || !canRegister"
-            >
-              {{ registering ? 'Registrando…' : 'Continuar' }}
-            </button>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="btn-ghost flex-1"
+                :disabled="registering"
+                @click="backToDocumentStep"
+              >
+                Volver
+              </button>
+              <button
+                type="submit"
+                class="btn-primary flex-1"
+                :disabled="registering || !canSubmitName"
+              >
+                {{ registering ? 'Registrando…' : 'Continuar' }}
+              </button>
+            </div>
           </form>
         </div>
       </div>
@@ -313,10 +351,10 @@ const needsRegistration = computed(
   () => !customerRegistered.value && !loading.value && !error.value,
 );
 const guestForm = reactive({ name: '', document: '' });
+const registrationStep = ref<'document' | 'name'>('document');
 const registering = ref(false);
-const canRegister = computed(
-  () => guestForm.name.trim().length >= 2 && guestForm.document.trim().length >= 5,
-);
+const canSubmitDocument = computed(() => guestForm.document.trim().length >= 5);
+const canSubmitName = computed(() => guestForm.name.trim().length >= 2);
 const menu = ref<MenuCategory[]>([]);
 const menuCategoryFilter = ref<string | null>(null);
 
@@ -423,6 +461,7 @@ async function reopenTableSession() {
   cart.splice(0, cart.length);
   guestForm.name = '';
   guestForm.document = '';
+  registrationStep.value = 'document';
   myOrders.value = [];
   resetBillState();
   customerRegistered.value = false;
@@ -445,21 +484,65 @@ async function reopenTableSession() {
   }
 }
 
-async function submitRegistration() {
-  if (!canRegister.value || !sessionId.value) return;
+function backToDocumentStep() {
+  registrationStep.value = 'document';
+  guestForm.name = '';
+}
+
+function applyRegistrationResult(result: {
+  status: 'linked' | 'created';
+  customer: import('@/shared/types').Customer;
+  tableSession: import('@/shared/types').TableSession;
+}) {
+  bill.customer = result.customer;
+  bill.tableSession = result.tableSession;
+  tableSessionId.value = result.tableSession.id;
+  customerRegistered.value = true;
+  sessionReopened.value = false;
+  registrationStep.value = 'document';
+  guestForm.name = '';
+  const msg =
+    result.status === 'linked'
+      ? `Bienvenido de nuevo, ${result.customer.name}`
+      : `Bienvenido, ${result.customer.name}`;
+  toast.success(msg);
+}
+
+async function submitDocument() {
+  if (!canSubmitDocument.value || !sessionId.value) return;
   registering.value = true;
   try {
     const result = await publicApi.registerCustomer({
       sessionId: sessionId.value,
-      name: guestForm.name.trim(),
       document: guestForm.document.trim(),
     });
-    bill.customer = result.customer;
-    bill.tableSession = result.tableSession;
-    tableSessionId.value = result.tableSession.id;
-    customerRegistered.value = true;
-    sessionReopened.value = false;
-    toast.success(`Bienvenido, ${result.customer.name}`);
+    if (result.status === 'need_name') {
+      registrationStep.value = 'name';
+      return;
+    }
+    applyRegistrationResult(result);
+    await refreshTableData();
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
+  } finally {
+    registering.value = false;
+  }
+}
+
+async function submitRegistration() {
+  if (!canSubmitName.value || !sessionId.value) return;
+  registering.value = true;
+  try {
+    const result = await publicApi.registerCustomer({
+      sessionId: sessionId.value,
+      document: guestForm.document.trim(),
+      name: guestForm.name.trim(),
+    });
+    if (result.status === 'need_name') {
+      registrationStep.value = 'name';
+      return;
+    }
+    applyRegistrationResult(result);
     await refreshTableData();
   } catch (e) {
     toast.error(apiErrorMessage(e));
@@ -470,7 +553,7 @@ async function submitRegistration() {
 
 async function submitOrder() {
   if (!customerRegistered.value) {
-    toast.error('Registra tu documento y nombre antes de pedir.');
+    toast.error('Registrá tu documento antes de pedir.');
     return;
   }
   if (tableClosed.value) {

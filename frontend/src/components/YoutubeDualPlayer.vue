@@ -451,6 +451,7 @@ async function initPlayers() {
     onStateChange: (event: { data: number }) => {
       // Pausar precarga en player inactivo en cuanto empiece a cargar
       if (
+        !swapping.value &&
         slot !== activeSlot.value &&
         slot === pauseAfterLoadSlot.value &&
         (event.data === YT_PLAYER_STATE.PLAYING || event.data === YT_PLAYER_STATE.BUFFERING)
@@ -588,9 +589,31 @@ function prebufferNext(track: YoutubePlayerTrack) {
   void prefetchNextTrack(track);
 }
 
+function findSlotWithVideo(youtubeId: string, preferInactive = false): Slot | null {
+  const order: Slot[] = preferInactive
+    ? [inactiveSlot(), activeSlot.value]
+    : [activeSlot.value, inactiveSlot()];
+
+  for (const slot of order) {
+    if (getVideoId(slot) === youtubeId) return slot;
+    if (preloadedReady.value[slot] === youtubeId && loadedIds.value[slot] === youtubeId) {
+      return slot;
+    }
+  }
+  return null;
+}
+
+function releasePrefetchHold(slot: Slot) {
+  if (pauseAfterLoadSlot.value === slot) {
+    pauseAfterLoadSlot.value = null;
+  }
+}
+
 function playSlot(slot: Slot, track: YoutubePlayerTrack, options: { restart?: boolean } = {}) {
   const player = slotPlayer(slot);
   if (!player) return;
+
+  releasePrefetchHold(slot);
 
   const restart = options.restart !== false;
   const onAir = getVideoId(slot);
@@ -633,8 +656,12 @@ function playSlot(slot: Slot, track: YoutubePlayerTrack, options: { restart?: bo
   }
 }
 
-async function ensurePlaying(slot: Slot, track: YoutubePlayerTrack): Promise<void> {
-  playSlot(slot, track);
+async function ensurePlaying(
+  slot: Slot,
+  track: YoutubePlayerTrack,
+  options: { restart?: boolean } = {},
+): Promise<void> {
+  playSlot(slot, track, options);
 
   const ok = await waitForPlayerState(
     slot,
@@ -776,6 +803,62 @@ async function activateTrack(track: YoutubePlayerTrack) {
   await activateTrackInner(prepared);
 }
 
+async function swapToPreparedTrack(
+  prepared: YoutubePlayerTrack,
+  options: { stopOldSlot?: boolean } = {},
+): Promise<boolean> {
+  const stopOldSlot = options.stopOldSlot !== false;
+  const youtubeId = prepared.youtubeId;
+  const oldSlot = activeSlot.value;
+
+  let targetSlot = findSlotWithVideo(youtubeId, true);
+  if (!targetSlot) {
+    targetSlot = inactiveSlot();
+  }
+
+  releasePrefetchHold(targetSlot);
+  pauseAfterLoadSlot.value = null;
+
+  swapping.value = true;
+  try {
+    const preloaded = findSlotWithVideo(youtubeId, true);
+    const resumePreload = preloaded != null && preloaded !== oldSlot;
+
+    await ensurePlaying(targetSlot, prepared, { restart: !resumePreload });
+
+    const playing = await waitForPlayerState(
+      targetSlot,
+      [YT_PLAYER_STATE.PLAYING, YT_PLAYER_STATE.BUFFERING],
+      PLAY_WAIT_MS,
+    );
+    if (!playing) {
+      await ensurePlaying(targetSlot, prepared);
+    }
+
+    activeSlot.value = targetSlot;
+    syncPlayerStateFromSlot(targetSlot);
+    await revealActiveSlot(targetSlot);
+
+    if (stopOldSlot && oldSlot !== targetSlot) {
+      try {
+        slotPlayer(oldSlot)?.stopVideo();
+        loadedIds.value[oldSlot] = '';
+        preloadedReady.value[oldSlot] = '';
+      } catch {
+        /* ignore */
+      }
+    }
+
+    activeTrackId.value = prepared.id;
+    autoplayBlocked.value = false;
+    updateProgress();
+    emit('playing', prepared);
+    void prefetchNextTrack(props.nextTrack);
+    return true;
+  } finally {
+    swapping.value = false;
+  }
+}
 async function activateTrackInner(track: YoutubePlayerTrack) {
   if (isTrackActiveOnPlayer(track)) {
     syncPlayerStateFromSlot(activeSlot.value);
@@ -798,50 +881,7 @@ async function activateTrackInner(track: YoutubePlayerTrack) {
   }
 
   swappedTrackId.value = null;
-  pauseAfterLoadSlot.value = null;
-
-  const youtubeId = track.youtubeId;
-  let preloadedSlot: Slot | null = null;
-
-  for (const slot of ['a', 'b'] as Slot[]) {
-    if (getVideoId(slot) === youtubeId) {
-      preloadedSlot = slot;
-      break;
-    }
-  }
-
-  if (preloadedSlot && preloadedSlot !== activeSlot.value) {
-    const oldSlot = activeSlot.value;
-    swapping.value = true;
-    try {
-      await ensurePlaying(preloadedSlot, track);
-      activeSlot.value = preloadedSlot;
-      syncPlayerStateFromSlot(preloadedSlot);
-      await revealActiveSlot(preloadedSlot);
-
-      try {
-        slotPlayer(oldSlot)?.stopVideo();
-        loadedIds.value[oldSlot] = '';
-        preloadedReady.value[oldSlot] = '';
-      } catch {
-        /* ignore */
-      }
-    } finally {
-      swapping.value = false;
-    }
-  } else {
-    const slot = preloadedSlot ?? activeSlot.value;
-    if (slot !== activeSlot.value) activeSlot.value = slot;
-    await ensurePlaying(slot, track);
-    await revealActiveSlot(slot);
-  }
-
-  syncPlayerStateFromSlot(activeSlot.value);
-  autoplayBlocked.value = false;
-  updateProgress();
-  activeTrackId.value = track.id;
-  emit('playing', track);
-  void prefetchNextTrack(props.nextTrack);
+  await swapToPreparedTrack(track);
 }
 
 async function performEarlySwap(options: { emitSync?: boolean } = {}) {
@@ -858,66 +898,23 @@ async function performEarlySwap(options: { emitSync?: boolean } = {}) {
     return;
   }
 
-  const nextSlot = inactiveSlot();
-  const oldSlot = activeSlot.value;
-  const currentPlayer = slotPlayer(oldSlot);
-  if (!slotPlayer(nextSlot)) return;
-
-  swapping.value = true;
   swappedTrackId.value = finished.id;
 
   const preparedNext = await preparePlaybackTrack(next, { silent: true });
   if (!preparedNext) {
-    swapping.value = false;
     swappedTrackId.value = null;
     if (props.syncToBackend) emit('need-sync');
     return;
   }
 
-  const preloaded = isSlotReadyForVideo(nextSlot, preparedNext.youtubeId);
+  await swapToPreparedTrack(preparedNext);
 
-  if (preloaded) {
-    playSlot(nextSlot, preparedNext, { restart: false });
-    const playing = await waitForPlayerState(
-      nextSlot,
-      [YT_PLAYER_STATE.PLAYING, YT_PLAYER_STATE.BUFFERING],
-      PLAY_WAIT_MS,
-    );
-    if (!playing) {
-      await ensurePlaying(nextSlot, preparedNext);
-    }
-    activeSlot.value = nextSlot;
-    syncPlayerStateFromSlot(nextSlot);
-    await revealActiveSlot(nextSlot);
-  } else {
-    await ensurePlaying(nextSlot, preparedNext);
-    activeSlot.value = nextSlot;
-    syncPlayerStateFromSlot(nextSlot);
-    await revealActiveSlot(nextSlot);
-  }
-
-  activeTrackId.value = preparedNext.id;
-
-  // Parar player anterior
-  try {
-    currentPlayer?.stopVideo();
-    loadedIds.value[oldSlot] = '';
-    preloadedReady.value[oldSlot] = '';
-  } catch {
-    /* ignore */
-  }
-
-  emit('playing', preparedNext);
   if (emitSync && props.syncToBackend) {
     emit('ended', finished);
     emit('need-sync');
   } else if (emitSync) {
     emit('ended', finished);
   }
-
-  swapping.value = false;
-  updateProgress();
-  void prefetchNextTrack(props.nextTrack);
 }
 
 async function finishCurrentTrack(emitSync: boolean) {
@@ -1010,8 +1007,8 @@ function resumePlayback() {
   if (track) void ensurePlaying(activeSlot.value, track);
 }
 
-function forceSkip() {
-  void performEarlySwap({ emitSync: false });
+async function forceSkip() {
+  await performEarlySwap({ emitSync: false });
 }
 
 function switchToTrack(track: YoutubePlayerTrack) {

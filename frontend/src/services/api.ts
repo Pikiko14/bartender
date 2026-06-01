@@ -156,10 +156,15 @@ export const publicApi = {
     unwrap<ScanResult>(
       http.post('/public/sessions/scan', { businessSlug, tableSlug, resumeSessionId }),
     ),
-  registerCustomer: (body: { sessionId: string; name: string; document: string }) =>
-    unwrap<{ customer: import('@/shared/types').Customer; tableSession: import('@/shared/types').TableSession }>(
-      http.post('/public/sessions/register-customer', body),
-    ),
+  registerCustomer: (body: { sessionId: string; document: string; name?: string }) =>
+    unwrap<
+      | {
+          status: 'linked' | 'created';
+          customer: import('@/shared/types').Customer;
+          tableSession: import('@/shared/types').TableSession;
+        }
+      | { status: 'need_name' }
+    >(http.post('/public/sessions/register-customer', body)),
   getSession: (sessionId: string) => unwrap<GuestSession>(http.get(`/public/sessions/${sessionId}`)),
   menu: (businessSlug: string) => unwrap<MenuCategory[]>(http.get(`/public/menu/${businessSlug}`)),
   createOrder: (body: {

@@ -395,9 +395,7 @@ watch(
       liveTrack.value = storeTrack;
     }
 
-    if (isTvPlayerMode.value || isShared.value) {
-      void applyTrackToPlayer();
-    }
+    void applyTrackToPlayer();
   },
 );
 
@@ -511,8 +509,8 @@ async function syncWithBackendInternal() {
 }
 
 async function skip() {
-  playerRef.value?.forceSkip();
   try {
+    await playerRef.value?.forceSkip();
     await music.skip();
     liveTrack.value = toTrack(music.nowPlaying);
   } catch (e) {

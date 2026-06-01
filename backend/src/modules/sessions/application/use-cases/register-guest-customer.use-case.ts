@@ -19,9 +19,16 @@ import { GuestSessionService } from '../guest-session.service';
 import { RegisterGuestCustomerDto } from '../dto/register-guest-customer.dto';
 
 export interface RegisterGuestCustomerResult {
+  status: 'linked' | 'created';
   customer: CustomerView;
   tableSession: TableSessionView;
 }
+
+export interface RegisterGuestCustomerNeedName {
+  status: 'need_name';
+}
+
+export type RegisterGuestCustomerResponse = RegisterGuestCustomerResult | RegisterGuestCustomerNeedName;
 
 @Injectable()
 export class RegisterGuestCustomerUseCase {
@@ -31,7 +38,7 @@ export class RegisterGuestCustomerUseCase {
     @Inject(CUSTOMER_REPOSITORY) private readonly customers: CustomerRepository,
   ) {}
 
-  async execute(dto: RegisterGuestCustomerDto): Promise<RegisterGuestCustomerResult> {
+  async execute(dto: RegisterGuestCustomerDto): Promise<RegisterGuestCustomerResponse> {
     const session = await this.sessions.get(dto.sessionId);
     const tableSession = await this.tableSessions.findById(session.tableSessionId);
     if (!tableSession) {
@@ -44,32 +51,46 @@ export class RegisterGuestCustomerUseCase {
     }
 
     const document = dto.document.trim();
-    const name = dto.name.trim();
+    const name = dto.name?.trim() ?? '';
 
     let customer = await this.customers.findByDocument(session.businessId, document);
     if (customer) {
-      if (customer.name !== name) {
+      if (name && customer.name !== name) {
         customer.updateProfile({ name });
         customer = await this.customers.update(customer);
       }
-    } else {
-      customer = await this.customers.create(
-        new Customer({
-          id: uuid(),
-          businessId: session.businessId,
-          name,
-          document,
-          phone: null,
-          email: null,
-          notes: null,
-        }),
-      );
+
+      tableSession.assignCustomer(customer.id);
+      await this.tableSessions.update(tableSession);
+
+      return {
+        status: 'linked',
+        customer: presentCustomer(customer),
+        tableSession: presentTableSession(tableSession),
+      };
     }
+
+    if (name.length < 2) {
+      return { status: 'need_name' };
+    }
+
+    customer = await this.customers.create(
+      new Customer({
+        id: uuid(),
+        businessId: session.businessId,
+        name,
+        document,
+        phone: null,
+        email: null,
+        notes: null,
+      }),
+    );
 
     tableSession.assignCustomer(customer.id);
     await this.tableSessions.update(tableSession);
 
     return {
+      status: 'created',
       customer: presentCustomer(customer),
       tableSession: presentTableSession(tableSession),
     };

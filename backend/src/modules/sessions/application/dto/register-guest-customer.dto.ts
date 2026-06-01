@@ -1,14 +1,15 @@
-import { IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, MinLength } from 'class-validator';
 
 export class RegisterGuestCustomerDto {
   @IsString()
   sessionId!: string;
 
   @IsString()
-  @MinLength(2)
-  name!: string;
-
-  @IsString()
   @MinLength(5)
   document!: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(2)
+  name?: string;
 }
