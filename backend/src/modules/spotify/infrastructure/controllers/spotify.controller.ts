@@ -1,4 +1,4 @@
-import { Controller, Delete, Get, Patch, Post, Body, Query, Res, Param } from '@nestjs/common';
+import { Controller, Delete, Get, Patch, Post, Body, Query, Res, Param, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
@@ -25,6 +25,8 @@ import { SpotifyService } from '../services/spotify.service';
 
 @Controller('spotify')
 export class SpotifyController {
+  private readonly logger = new Logger(SpotifyController.name);
+
   constructor(
     private readonly oauth: SpotifyOAuthUseCase,
     private readonly status: SpotifyStatusUseCase,
@@ -57,7 +59,9 @@ export class SpotifyController {
     try {
       await this.oauth.handleCallback(code, state);
       return res.redirect(`${appUrl}/app/settings/business?connected=1`);
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(`[Spotify] oauth callback failed: ${message}`);
       return res.redirect(`${appUrl}/app/settings/business?error=oauth_failed`);
     }
   }
