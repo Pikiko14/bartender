@@ -44,21 +44,11 @@
       class="mt-4 card flex flex-wrap items-center justify-between gap-3 border border-neon-cyan/20 bg-neon-cyan/5 p-3 text-sm"
     >
       <span class="text-slate-300">
-        Cola Bartender → usa «Sincronizar» para ver las mismas canciones en la fila de Spotify.
+        Al aprobar, cada canción se añade a la cola de Spotify (reproductor abierto).
       </span>
-      <div class="flex flex-wrap gap-2">
-        <button
-          type="button"
-          class="btn-cyan text-xs"
-          :disabled="syncingSpotify || !music.queue.length && !music.nowPlaying"
-          @click="syncSpotifyQueue"
-        >
-          {{ syncingSpotify ? '…' : '↻ Sincronizar con Spotify' }}
-        </button>
-        <RouterLink :to="providerSettingsPath" class="btn-ghost text-xs text-neon-cyan">
-          Configurar proveedor →
-        </RouterLink>
-      </div>
+      <RouterLink :to="providerSettingsPath" class="btn-ghost text-xs text-neon-cyan">
+        Configurar proveedor →
+      </RouterLink>
     </div>
     <div
       v-else-if="canManageProvider"
@@ -219,7 +209,7 @@ import { useBusinessStore } from '@/stores/business.store';
 import { apiErrorMessage } from '@/services/http';
 import { useToast } from '@/composables/useToast';
 import { useMusicProviderStatus } from '@/composables/useMusicProviderStatus';
-import { musicApi, spotifyApi } from '@/services/api';
+import { spotifyApi } from '@/services/api';
 import { djShareUrl } from '@/shared/dj-share';
 import { onMusicSyncBroadcast } from '@/shared/music-sync-bus';
 import { onPlaybackSync } from '@/shared/playback-sync';
@@ -233,7 +223,6 @@ const { isSpotifyProvider, refresh: refreshProviderStatus } = useMusicProviderSt
 const playingId = ref<string | null>(null);
 const isPlaying = ref(true);
 const busy = ref(false);
-const syncingSpotify = ref(false);
 const spotifyLive = ref<SpotifyPlaybackSnapshot | null>(null);
 let unregPlaybackSync: (() => void) | undefined;
 let unregMusicSync: (() => void) | undefined;
@@ -385,23 +374,6 @@ async function playNow(id: string) {
     toast.error(apiErrorMessage(e));
   } finally {
     playingId.value = null;
-  }
-}
-
-async function syncSpotifyQueue() {
-  if (syncingSpotify.value) return;
-  syncingSpotify.value = true;
-  try {
-    const { trackCount } = await musicApi.syncSpotifyQueue();
-    toast.success(
-      trackCount > 0
-        ? `${trackCount} temas enviados a la fila de Spotify.`
-        : 'No hay temas para sincronizar.',
-    );
-  } catch (e) {
-    toast.error(apiErrorMessage(e));
-  } finally {
-    syncingSpotify.value = false;
   }
 }
 
