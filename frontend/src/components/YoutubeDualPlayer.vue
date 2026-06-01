@@ -220,10 +220,9 @@ function isSlotReadyForVideo(slot: Slot, youtubeId: string): boolean {
   try {
     const state = slotPlayer(slot)?.getPlayerState();
     return (
-      state === YT_PLAYER_STATE.PAUSED ||
-      state === YT_PLAYER_STATE.CUED ||
       state === YT_PLAYER_STATE.PLAYING ||
-      state === YT_PLAYER_STATE.BUFFERING
+      state === YT_PLAYER_STATE.BUFFERING ||
+      state === YT_PLAYER_STATE.PAUSED
     );
   } catch {
     return false;
@@ -260,20 +259,21 @@ function getVideoId(slot: Slot): string {
 function isTrackActiveOnPlayer(track: YoutubePlayerTrack): boolean {
   if (activeTrackId.value !== track.id) return false;
   try {
-    const state = slotPlayer(activeSlot.value)?.getPlayerState();
-    return (
-      state === YT_PLAYER_STATE.PLAYING ||
-      state === YT_PLAYER_STATE.BUFFERING ||
-      state === YT_PLAYER_STATE.PAUSED ||
-      state === YT_PLAYER_STATE.CUED
-    );
+    const slot = activeSlot.value;
+    const onAir = getVideoId(slot);
+    if (onAir !== track.youtubeId) return false;
+    const state = slotPlayer(slot)?.getPlayerState();
+    return state === YT_PLAYER_STATE.PLAYING || state === YT_PLAYER_STATE.BUFFERING;
   } catch {
     return false;
   }
 }
 
 function isPlayingTrack(trackId: string): boolean {
-  return activeTrackId.value === trackId;
+  if (activeTrackId.value !== trackId) return false;
+  const track = props.currentTrack;
+  if (!track || track.id !== trackId) return false;
+  return isTrackActiveOnPlayer(track);
 }
 
 
@@ -541,7 +541,8 @@ function maybeStart() {
 /** Carga real del video (no cue) en un slot. */
 function loadIntoSlot(slot: Slot, youtubeId: string) {
   const player = slotPlayer(slot);
-  if (!player || loadedIds.value[slot] === youtubeId) return;
+  if (!player) return;
+  if (getVideoId(slot) === youtubeId && loadedIds.value[slot] === youtubeId) return;
   try {
     player.loadVideoById(youtubeId, 0);
     loadedIds.value[slot] = youtubeId;
@@ -592,20 +593,28 @@ function playSlot(slot: Slot, track: YoutubePlayerTrack, options: { restart?: bo
   if (!player) return;
 
   const restart = options.restart !== false;
+  const onAir = getVideoId(slot);
+  const hasVideo = onAir === track.youtubeId && loadedIds.value[slot] === track.youtubeId;
 
   try {
     player.unMute();
     player.setVolume?.(100);
 
-    if (loadedIds.value[slot] === track.youtubeId) {
+    if (hasVideo) {
       if (restart) {
         try {
           const state = player.getPlayerState();
           if (state === YT_PLAYER_STATE.PAUSED || state === YT_PLAYER_STATE.CUED) {
             player.playVideo();
-          } else {
+          } else if (
+            state === YT_PLAYER_STATE.PLAYING ||
+            state === YT_PLAYER_STATE.BUFFERING
+          ) {
             player.seekTo?.(0, true);
             player.playVideo();
+          } else {
+            player.loadVideoById(track.youtubeId, 0);
+            loadedIds.value[slot] = track.youtubeId;
           }
         } catch {
           player.playVideo();
@@ -777,6 +786,17 @@ async function activateTrackInner(track: YoutubePlayerTrack) {
     return;
   }
 
+  // Pista marcada pero iframe vacío/detenido — forzar recarga
+  if (activeTrackId.value === track.id) {
+    activeTrackId.value = null;
+    for (const slot of ['a', 'b'] as Slot[]) {
+      if (loadedIds.value[slot] === track.youtubeId && getVideoId(slot) !== track.youtubeId) {
+        loadedIds.value[slot] = '';
+        preloadedReady.value[slot] = '';
+      }
+    }
+  }
+
   swappedTrackId.value = null;
   pauseAfterLoadSlot.value = null;
 
@@ -858,11 +878,14 @@ async function performEarlySwap(options: { emitSync?: boolean } = {}) {
 
   if (preloaded) {
     playSlot(nextSlot, preparedNext, { restart: false });
-    await waitForPlayerState(
+    const playing = await waitForPlayerState(
       nextSlot,
       [YT_PLAYER_STATE.PLAYING, YT_PLAYER_STATE.BUFFERING],
       PLAY_WAIT_MS,
     );
+    if (!playing) {
+      await ensurePlaying(nextSlot, preparedNext);
+    }
     activeSlot.value = nextSlot;
     syncPlayerStateFromSlot(nextSlot);
     await revealActiveSlot(nextSlot);
@@ -998,9 +1021,12 @@ function switchToTrack(track: YoutubePlayerTrack) {
 let trackChangeToken = 0;
 
 async function applyTrackChange(track: YoutubePlayerTrack) {
-  if (swapping.value) return;
-
   const token = ++trackChangeToken;
+
+  while (swapping.value && !destroyed) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  if (token !== trackChangeToken) return;
 
   const deadline = Date.now() + 12_000;
   while (!bothReady() && Date.now() < deadline) {
@@ -1008,6 +1034,7 @@ async function applyTrackChange(track: YoutubePlayerTrack) {
   }
   if (!bothReady() || token !== trackChangeToken) return;
 
+  swappedTrackId.value = null;
   await activateTrack(track);
 }
 
@@ -1018,14 +1045,6 @@ watch(
   (key, prev) => {
     if (!props.currentTrack?.id || key === prev) return;
     clearTrackResolution(props.currentTrack.id);
-  },
-);
-
-watch(
-  () => props.currentTrack?.id,
-  (id, prev) => {
-    if (!id || id === prev || !props.currentTrack) return;
-    if (swapping.value) return;
     if (isTrackActiveOnPlayer(props.currentTrack)) {
       swappedTrackId.value = null;
       return;

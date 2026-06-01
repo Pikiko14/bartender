@@ -342,10 +342,23 @@ const effectiveNowPlayingId = computed(
 );
 
 const currentTrack = computed(() => {
-  if (liveTrack.value && liveTrack.value.id !== music.nowPlaying?.id) {
-    return liveTrack.value;
+  const storeTrack = toTrack(music.nowPlaying);
+  const live = liveTrack.value;
+
+  if (!live) return storeTrack;
+  if (!storeTrack) return live;
+  if (live.id === storeTrack.id) return live;
+
+  const queue = music.queue;
+  const storeIdx = queue.findIndex((s) => s.id === storeTrack.id);
+  const liveIdx = queue.findIndex((s) => s.id === live.id);
+
+  // Swap anticipado local: live va por delante en la cola
+  if (liveIdx >= 0 && storeIdx >= 0 && liveIdx > storeIdx) {
+    return live;
   }
-  return toTrack(music.nowPlaying);
+
+  return storeTrack;
 });
 
 const nextTrack = computed(() => {
@@ -373,16 +386,15 @@ function onPlayerPlaying(track: YoutubePlayerTrack) {
 }
 
 watch(
-  () => music.nowPlaying,
-  (req) => {
-    if (req) liveTrack.value = toTrack(req);
-  },
-);
-
-watch(
   () => music.nowPlaying?.id,
   (id, prev) => {
     if (!id || id === prev || isTvCastMode.value) return;
+
+    const storeTrack = toTrack(music.nowPlaying);
+    if (storeTrack && !playerRef.value?.isPlayingTrack(storeTrack.id)) {
+      liveTrack.value = storeTrack;
+    }
+
     if (isTvPlayerMode.value || isShared.value) {
       void applyTrackToPlayer();
     }
@@ -407,7 +419,6 @@ async function applyTrackToPlayer() {
   if (playerRef.value?.isPlayingTrack(track.id)) return;
   await nextTick();
   playerRef.value?.switchToTrack(track);
-  liveTrack.value = track;
 }
 
 let unregMusicBroadcast: (() => void) | undefined;
