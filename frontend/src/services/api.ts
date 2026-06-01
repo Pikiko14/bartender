@@ -129,8 +129,8 @@ export const customersApi = {
 // ---- Music (staff) ----
 export const musicApi = {
   queue: () => unwrap<MusicQueue>(http.get('/music/queue')),
-  approve: (id: string) => unwrap<MusicRequest>(http.patch(`/music/requests/${id}/approve`, {})),
-  reject: (id: string) => unwrap<MusicRequest>(http.patch(`/music/requests/${id}/reject`, {})),
+  approve: (id: string) => unwrap<MusicQueue>(http.patch(`/music/requests/${id}/approve`, {})),
+  reject: (id: string) => unwrap<MusicQueue>(http.patch(`/music/requests/${id}/reject`, {})),
   setPriority: (id: string, priority: number) =>
     unwrap<MusicRequest>(http.patch(`/music/requests/${id}/priority`, { priority })),
   playNext: () => unwrap<MusicRequest | null>(http.post('/music/play-next', {})),

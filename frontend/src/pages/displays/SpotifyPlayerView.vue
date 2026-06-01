@@ -20,6 +20,9 @@
         <ul class="mt-3 space-y-2 text-sm text-slate-300">
           <li>Dispositivo: <span class="text-white">{{ deviceId || '—' }}</span></li>
           <li>Última sync: <span class="text-white">{{ lastSync || '—' }}</span></li>
+          <li v-if="music.queue.length">
+            En cola: <span class="text-white">{{ music.queue.length }}</span>
+          </li>
         </ul>
 
         <div v-if="currentTrack" class="mt-5 flex items-center gap-3 rounded-lg bg-ink-800 p-3">
@@ -49,8 +52,8 @@
       </div>
 
       <p class="mt-4 text-xs text-slate-500">
-        Requiere cuenta Spotify Premium conectada al establecimiento. La cola la gestiona Bartender;
-        este reproductor solo ejecuta la reproducción.
+        Requiere cuenta Spotify Premium conectada al establecimiento. Al terminar una canción pasa
+        automáticamente a la siguiente de la cola Bartender.
       </p>
     </div>
   </div>
@@ -60,7 +63,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { createSpotifyPlayer, type SpotifyPlayerInstance } from '@/composables/useSpotifyWebPlayback';
-import { publicSpotifyApi, spotifyApi } from '@/services/api';
+import { businessApi, publicSpotifyApi, spotifyApi } from '@/services/api';
 import { apiErrorMessage } from '@/services/http';
 import { realtime, SocketEvents } from '@/socket/socket';
 import { useAuthStore } from '@/stores/auth.store';
@@ -82,6 +85,9 @@ const currentTrack = ref<{ title: string; artist: string; imageUrl: string | nul
 
 let player: SpotifyPlayerInstance | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
+let advancing = false;
+let advanceTimer: ReturnType<typeof setTimeout> | null = null;
+let lastTrackUri = '';
 
 const statusLabel = computed(() => {
   if (connecting.value) return 'Conectando…';
@@ -111,6 +117,82 @@ async function registerDevice(id: string) {
   lastSync.value = new Date().toLocaleTimeString();
 }
 
+async function advanceQueue() {
+  if (advancing) return;
+  const hasQueue = music.queue.length > 0 || music.nowPlaying;
+  if (!hasQueue) return;
+
+  advancing = true;
+  try {
+    if (isPublic.value && businessSlug.value) {
+      await music.playNextPublic(businessSlug.value);
+    } else {
+      await music.playNext();
+    }
+    lastSync.value = new Date().toLocaleTimeString();
+  } catch {
+    /* Cola vacía o sin reproductor: no es un error fatal. */
+  } finally {
+    advancing = false;
+  }
+}
+
+function scheduleAdvanceOnEnd() {
+  if (advanceTimer) clearTimeout(advanceTimer);
+  advanceTimer = setTimeout(() => {
+    advanceTimer = null;
+    void advanceQueue();
+  }, 600);
+}
+
+function handlePlayerState(state: unknown) {
+  const s = state as {
+    paused?: boolean;
+    position?: number;
+    duration?: number;
+    track_window?: {
+      current_track?: {
+        uri?: string;
+        id: string;
+        name: string;
+        artists: Array<{ name: string }>;
+        album: { images: Array<{ url: string }> };
+      };
+    };
+  } | null;
+
+  if (!s?.track_window?.current_track) {
+    if (lastTrackUri) scheduleAdvanceOnEnd();
+    currentTrack.value = null;
+    isPlaying.value = false;
+    lastTrackUri = '';
+    return;
+  }
+
+  const t = s.track_window.current_track;
+  const trackUri = t.uri ?? t.id;
+  const spotifyId = t.id?.includes(':') ? t.id.split(':').pop()! : t.id;
+
+  currentTrack.value = {
+    title: t.name,
+    artist: t.artists.map((a) => a.name).join(', '),
+    imageUrl: t.album.images[0]?.url ?? null,
+  };
+  isPlaying.value = !s.paused;
+
+  const duration = s.duration ?? 0;
+  const position = s.position ?? 0;
+  if (duration > 0 && position > 0 && position >= duration - 1500) {
+    scheduleAdvanceOnEnd();
+  }
+
+  lastTrackUri = trackUri;
+
+  if (!isPublic.value && auth.user?.businessId && spotifyId) {
+    void music.trySyncFromSpotifyTrack(spotifyId);
+  }
+}
+
 async function reconnect() {
   connecting.value = true;
   error.value = '';
@@ -125,36 +207,7 @@ async function reconnect() {
     await registerDevice(result.deviceId);
     connected.value = true;
 
-    player.addListener('player_state_changed', (state: unknown) => {
-      const s = state as {
-        paused?: boolean;
-        track_window?: {
-          current_track?: {
-            id: string;
-            name: string;
-            artists: Array<{ name: string }>;
-            album: { images: Array<{ url: string }> };
-          };
-        };
-      } | null;
-      if (!s?.track_window?.current_track) {
-        currentTrack.value = null;
-        isPlaying.value = false;
-        return;
-      }
-      const t = s.track_window.current_track;
-      const spotifyId = t.id?.includes(':') ? t.id.split(':').pop()! : t.id;
-      currentTrack.value = {
-        title: t.name,
-        artist: t.artists.map((a) => a.name).join(', '),
-        imageUrl: t.album.images[0]?.url ?? null,
-      };
-      isPlaying.value = !s.paused;
-
-      if (!isPublic.value && auth.user?.businessId && spotifyId) {
-        void music.trySyncFromSpotifyTrack(spotifyId);
-      }
-    });
+    player.addListener('player_state_changed', handlePlayerState);
   } catch (e) {
     error.value = apiErrorMessage(e);
     connected.value = false;
@@ -164,10 +217,19 @@ async function reconnect() {
 }
 
 onMounted(async () => {
-  if (!isPublic.value && auth.user?.businessId) {
-    music.bindBusiness(auth.user.businessId);
-    await music.fetchQueue().catch(() => undefined);
+  try {
+    if (isPublic.value && businessSlug.value) {
+      const biz = await businessApi.publicBySlug(businessSlug.value);
+      music.bindBusiness(biz.id);
+      await music.fetchPublicQueue(businessSlug.value);
+    } else if (auth.user?.businessId) {
+      music.bindBusiness(auth.user.businessId);
+      await music.fetchQueue().catch(() => undefined);
+    }
+  } catch (e) {
+    error.value = apiErrorMessage(e);
   }
+
   await reconnect();
   pollTimer = setInterval(() => {
     if (!connected.value && !connecting.value) void reconnect();
@@ -176,10 +238,14 @@ onMounted(async () => {
   realtime.on(SocketEvents.MUSIC_PLAYING, () => {
     lastSync.value = new Date().toLocaleTimeString();
   });
+  realtime.on(SocketEvents.MUSIC_QUEUE_UPDATED, () => {
+    lastSync.value = new Date().toLocaleTimeString();
+  });
 });
 
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer);
+  if (advanceTimer) clearTimeout(advanceTimer);
   player?.disconnect();
 });
 </script>

@@ -1,10 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { EntityNotFoundException } from '@core/domain/exceptions';
 import { MusicRequest, MusicRequestStatus } from '../../domain/entities/music-request.entity';
 import { MusicRequestRepository } from '../../domain/repositories/music-request.repository';
 import { MusicRequestMapper } from '../mappers/music-request.mapper';
 import { MusicRequestDocument, MusicRequestModel } from '../schemas/music-request.schema';
+
+function businessIdFilter(businessId: string): Record<string, unknown> {
+  if (Types.ObjectId.isValid(businessId)) {
+    const oid = new Types.ObjectId(businessId);
+    return { $or: [{ businessId: oid }, { businessId }] };
+  }
+  return { businessId };
+}
 
 @Injectable()
 export class MusicRequestMongoRepository extends MusicRequestRepository {
@@ -30,7 +39,7 @@ export class MusicRequestMongoRepository extends MusicRequestRepository {
     statuses: MusicRequestStatus[],
   ): Promise<MusicRequest[]> {
     const docs = await this.model
-      .find({ businessId: new Types.ObjectId(businessId), status: { $in: statuses } })
+      .find({ ...businessIdFilter(businessId), status: { $in: statuses } })
       .sort({ priority: -1, votes: -1, createdAt: 1 })
       .exec();
     return docs.map(MusicRequestMapper.toDomain);
@@ -38,7 +47,7 @@ export class MusicRequestMongoRepository extends MusicRequestRepository {
 
   async findNowPlaying(businessId: string): Promise<MusicRequest | null> {
     const doc = await this.model
-      .findOne({ businessId: new Types.ObjectId(businessId), status: MusicRequestStatus.PLAYING })
+      .findOne({ ...businessIdFilter(businessId), status: MusicRequestStatus.PLAYING })
       .sort({ playedAt: -1 })
       .exec();
     return doc ? MusicRequestMapper.toDomain(doc) : null;
@@ -46,9 +55,15 @@ export class MusicRequestMongoRepository extends MusicRequestRepository {
 
   async update(request: MusicRequest): Promise<MusicRequest> {
     const updated = await this.model
-      .findByIdAndUpdate(request.id, MusicRequestMapper.toPersistence(request), { new: true })
+      .findByIdAndUpdate(request.id, MusicRequestMapper.toPersistence(request), {
+        new: true,
+        runValidators: true,
+      })
       .exec();
-    return MusicRequestMapper.toDomain(updated as MusicRequestDocument);
+    if (!updated) {
+      throw new EntityNotFoundException('Canción', request.id);
+    }
+    return MusicRequestMapper.toDomain(updated);
   }
 
   async countRecentBySession(
@@ -58,7 +73,7 @@ export class MusicRequestMongoRepository extends MusicRequestRepository {
   ): Promise<number> {
     return this.model
       .countDocuments({
-        businessId: new Types.ObjectId(businessId),
+        ...businessIdFilter(businessId),
         requestedBy,
         createdAt: { $gte: since },
       })

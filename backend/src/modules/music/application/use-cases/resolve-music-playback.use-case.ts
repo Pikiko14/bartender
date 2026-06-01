@@ -29,7 +29,12 @@ export class ResolveMusicPlaybackUseCase {
   async ensurePlayable(request: MusicRequest): Promise<MusicRequest | null> {
     const p = request.toPrimitives();
     if (p.provider === MusicProvider.SPOTIFY) {
-      return p.spotifyId ? request : null;
+      if (!p.spotifyId) {
+        throw new BusinessRuleViolationException(
+          'La petición Spotify no tiene ID de pista. Pídela de nuevo desde el menú QR.',
+        );
+      }
+      return request;
     }
 
     const resolved = await this.youtube.resolveForPlayback({

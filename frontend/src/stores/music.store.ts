@@ -43,26 +43,40 @@ export const useMusicStore = defineStore('music', {
       if (this.businessId) this.broadcastState(this.businessId);
     },
     async approve(id: string) {
-      await musicApi.approve(id);
-      await this.fetchQueue();
+      const q = await musicApi.approve(id);
+      this.applyQueue(q);
+      this.broadcastIfBound();
+      return q;
     },
     async reject(id: string) {
-      await musicApi.reject(id);
-      await this.fetchQueue();
+      const q = await musicApi.reject(id);
+      this.applyQueue(q);
+      this.broadcastIfBound();
+      return q;
     },
     async playNext() {
-      const playing = await musicApi.playNext();
-      await this.fetchQueue();
-      if (playing !== undefined) this.nowPlaying = playing;
-      this.broadcastIfBound();
-      return playing;
+      try {
+        const playing = await musicApi.playNext();
+        await this.fetchQueue();
+        if (playing) this.nowPlaying = playing;
+        this.broadcastIfBound();
+        return playing;
+      } catch (e) {
+        await this.fetchQueue();
+        throw e;
+      }
     },
     async skip() {
-      const playing = await musicApi.skip();
-      await this.fetchQueue();
-      if (playing !== undefined) this.nowPlaying = playing;
-      this.broadcastIfBound();
-      return playing;
+      try {
+        const playing = await musicApi.skip();
+        await this.fetchQueue();
+        if (playing) this.nowPlaying = playing;
+        this.broadcastIfBound();
+        return playing;
+      } catch (e) {
+        await this.fetchQueue();
+        throw e;
+      }
     },
 
     /** Si Spotify reproduce una pista de la cola, marca playing en BD. */
@@ -78,17 +92,29 @@ export const useMusicStore = defineStore('music', {
       await this.fetchQueue();
     },
     async playRequest(id: string) {
-      const playing = await musicApi.playRequest(id);
-      await this.fetchQueue();
-      this.nowPlaying = playing;
-      this.broadcastIfBound();
-      return playing;
+      try {
+        const playing = await musicApi.playRequest(id);
+        await this.fetchQueue();
+        if (playing) this.nowPlaying = playing;
+        this.broadcastIfBound();
+        return playing;
+      } catch (e) {
+        await this.fetchQueue();
+        throw e;
+      }
     },
 
     async playNextPublic(businessSlug: string) {
-      const playing = await publicApi.publicPlayNext(businessSlug);
-      if (playing !== undefined) this.nowPlaying = playing;
-      this.broadcastIfBound();
+      try {
+        const playing = await publicApi.publicPlayNext(businessSlug);
+        await this.fetchPublicQueue(businessSlug);
+        if (playing) this.nowPlaying = playing;
+        this.broadcastIfBound();
+        return playing;
+      } catch (e) {
+        await this.fetchPublicQueue(businessSlug).catch(() => undefined);
+        throw e;
+      }
     },
 
     async playRequestPublic(businessSlug: string, id: string) {

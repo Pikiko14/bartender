@@ -7,7 +7,7 @@ import {
   MUSIC_REQUEST_REPOSITORY,
   MusicRequestRepository,
 } from '../../domain/repositories/music-request.repository';
-import { GetQueueUseCase } from './get-queue.use-case';
+import { GetQueueUseCase, MusicQueueView } from './get-queue.use-case';
 import { presentMusicRequest } from '../presenters/music.presenter';
 
 @Injectable()
@@ -18,7 +18,7 @@ export class ModerateMusicUseCase {
     private readonly getQueue: GetQueueUseCase,
   ) {}
 
-  async approve(businessId: string, id: string) {
+  async approve(businessId: string, id: string): Promise<MusicQueueView> {
     const request = await this.getOwned(businessId, id);
     request.approve();
     const updated = await this.requests.update(request);
@@ -27,11 +27,12 @@ export class ModerateMusicUseCase {
       SocketEvents.MUSIC_APPROVED,
       presentMusicRequest(updated),
     );
-    await this.emitQueue(businessId);
-    return presentMusicRequest(updated);
+    const queue = await this.getQueue.execute(businessId);
+    this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_QUEUE_UPDATED, queue);
+    return queue;
   }
 
-  async reject(businessId: string, id: string) {
+  async reject(businessId: string, id: string): Promise<MusicQueueView> {
     const request = await this.getOwned(businessId, id);
     request.reject();
     const updated = await this.requests.update(request);
@@ -40,15 +41,17 @@ export class ModerateMusicUseCase {
       SocketEvents.MUSIC_REJECTED,
       presentMusicRequest(updated),
     );
-    await this.emitQueue(businessId);
-    return presentMusicRequest(updated);
+    const queue = await this.getQueue.execute(businessId);
+    this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_QUEUE_UPDATED, queue);
+    return queue;
   }
 
   async setPriority(businessId: string, id: string, priority: number) {
     const request = await this.getOwned(businessId, id);
     request.setPriority(priority);
     const updated = await this.requests.update(request);
-    await this.emitQueue(businessId);
+    const queue = await this.getQueue.execute(businessId);
+    this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_QUEUE_UPDATED, queue);
     return presentMusicRequest(updated);
   }
 
@@ -61,8 +64,4 @@ export class ModerateMusicUseCase {
     return request;
   }
 
-  private async emitQueue(businessId: string): Promise<void> {
-    const queue = await this.getQueue.execute(businessId);
-    this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_QUEUE_UPDATED, queue);
-  }
 }

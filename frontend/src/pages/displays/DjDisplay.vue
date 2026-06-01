@@ -13,6 +13,8 @@
         :next-track="nextTrack"
         class="h-full min-h-0 flex-1"
         @need-sync="onPlayerNeedSync"
+        @ended="onTrackEnded"
+        @queue-empty="onQueueEmpty"
         @playing="onPlayerPlaying"
         @error="onPlayerError"
         @external-fallback="onPlaybackUnavailable"
@@ -200,6 +202,8 @@
         :current-track="currentTrack"
         :next-track="nextTrack"
         @need-sync="onPlayerNeedSync"
+        @ended="onTrackEnded"
+        @queue-empty="onQueueEmpty"
         @playing="onPlayerPlaying"
         @error="onPlayerError"
         @external-fallback="onPlaybackUnavailable"
@@ -442,6 +446,54 @@ async function onPlayerNeedSync() {
     return;
   }
   await refreshQueueAndApply();
+}
+
+/** Avanza la cola en el backend y carga la siguiente pista en el reproductor. */
+async function advanceQueueFromBackend() {
+  if (useStaffPlaybackApi.value) {
+    await music.playNext();
+  } else if (effectiveSlug.value) {
+    await music.playNextPublic(effectiveSlug.value);
+  } else {
+    return;
+  }
+  liveTrack.value = toTrack(music.nowPlaying);
+  await applyTrackToPlayer();
+}
+
+async function onTrackEnded(finished: YoutubePlayerTrack) {
+  const advancedLocally =
+    liveTrack.value != null &&
+    liveTrack.value.id !== finished.id &&
+    music.queue.some((q) => q.id === liveTrack.value!.id);
+
+  if (advancedLocally) {
+    if (playerSyncBackend.value) scheduleBackendSync();
+    return;
+  }
+
+  try {
+    await advanceQueueFromBackend();
+  } catch {
+    await refreshQueueAndApply();
+  }
+}
+
+/** Si el reproductor se quedó sin “siguiente” local, intenta sacar otra de la cola en BD. */
+async function onQueueEmpty() {
+  if (music.queue.length) {
+    try {
+      await advanceQueueFromBackend();
+    } catch {
+      await refreshQueueAndApply();
+    }
+    return;
+  }
+  try {
+    await advanceQueueFromBackend();
+  } catch {
+    /* cola realmente vacía */
+  }
 }
 
 async function onResolvedAlternative(payload: {

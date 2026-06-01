@@ -1,6 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { BusinessRuleViolationException, EntityNotFoundException, ForbiddenDomainException } from '@core/domain/exceptions';
-import { MusicRequestStatus } from '../../domain/entities/music-request.entity';
+import {
+  BusinessRuleViolationException,
+  EntityNotFoundException,
+  ForbiddenDomainException,
+} from '@core/domain/exceptions';
+import { MusicProvider } from '@shared/enums/music-provider.enum';
+import { MusicRequest, MusicRequestStatus } from '../../domain/entities/music-request.entity';
 import { SocketEvents } from '@shared/realtime/socket-events';
 import { RealtimeService } from '@infrastructure/realtime/realtime.service';
 import { SpotifyPlaybackBridge } from '@modules/spotify/infrastructure/services/spotify-playback.bridge';
@@ -35,20 +40,13 @@ export class PlaybackUseCase {
     ]);
 
     for (const candidate of approved) {
-      const playable = await this.resolvePlayback.ensurePlayable(candidate);
-      if (!playable) {
+      try {
+        return await this.startPlayback(businessId, candidate);
+      } catch (err) {
+        if (candidate.provider === MusicProvider.SPOTIFY) throw err;
         candidate.skip();
         await this.requests.update(candidate);
-        continue;
       }
-
-      playable.markPlaying();
-      const updated = await this.requests.update(playable);
-      const view = presentMusicRequest(updated);
-      this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, view);
-      await this.spotifyPlayback.onTrackStarted(businessId, view);
-      await this.emitQueue(businessId);
-      return view;
     }
 
     await this.emitQueue(businessId);
@@ -93,22 +91,7 @@ export class PlaybackUseCase {
 
     const current = await this.requests.findNowPlaying(businessId);
     if (current?.id === requestId) {
-      const playable = await this.resolvePlayback.ensurePlayable(current);
-      if (!playable) {
-        current.skip();
-        await this.requests.update(current);
-        const next = await this.playNext(businessId);
-        if (!next) {
-          throw new BusinessRuleViolationException('No hay versión reproducible de esta canción.');
-        }
-        return next;
-      }
-      const updated = await this.requests.update(playable);
-      const view = presentMusicRequest(updated);
-      this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, view);
-      await this.spotifyPlayback.onTrackStarted(businessId, view);
-      await this.emitQueue(businessId);
-      return view;
+      return this.startPlayback(businessId, current);
     }
 
     if (current) {
@@ -130,22 +113,26 @@ export class PlaybackUseCase {
       );
     }
 
+    return this.startPlayback(businessId, request);
+  }
+
+  /** Spotify: reproduce antes de persistir `playing` para no vaciar la cola si falla. */
+  private async startPlayback(businessId: string, request: MusicRequest): Promise<MusicRequestView> {
     const playable = await this.resolvePlayback.ensurePlayable(request);
     if (!playable) {
-      request.skip();
-      await this.requests.update(request);
-      const next = await this.playNext(businessId);
-      if (!next) {
-        throw new BusinessRuleViolationException('No hay versión reproducible de esta canción.');
-      }
-      return next;
+      throw new BusinessRuleViolationException('No hay versión reproducible de esta canción.');
+    }
+    const p = playable.toPrimitives();
+
+    if (p.provider === MusicProvider.SPOTIFY) {
+      const preview = presentMusicRequest(playable);
+      await this.spotifyPlayback.onTrackStarted(businessId, preview);
     }
 
     playable.markPlaying();
     const updated = await this.requests.update(playable);
     const view = presentMusicRequest(updated);
     this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, view);
-    await this.spotifyPlayback.onTrackStarted(businessId, view);
     await this.emitQueue(businessId);
     return view;
   }

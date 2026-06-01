@@ -60,7 +60,7 @@
 
     <div class="mt-6 grid gap-6 lg:grid-cols-3">
       <div class="card p-5 lg:col-span-2">
-        <h2 class="font-semibold">Cola aprobada</h2>
+        <h2 class="font-semibold">Cola aprobada ({{ music.queue.length }})</h2>
 
         <div
           v-if="music.nowPlaying"
@@ -377,21 +377,12 @@ async function playNow(id: string) {
 
 async function approve(id: string) {
   try {
-    const idle = !music.nowPlaying;
     await music.approve(id);
-    if (isSpotifyProvider.value && idle && music.queue.length) {
-      const playing = await music.playNext();
-      await refreshSpotifyLive();
-      if (playing) {
-        toast.success('Aprobada y sonando en Spotify.');
-        return;
-      }
-      toast.info(
-        'Aprobada en cola. Abre /spotify-player en la tablet del local si no suena.',
-      );
-      return;
-    }
-    toast.success('Canción aprobada · en cola.');
+    toast.success(
+      music.queue.some((s) => s.id === id) || music.nowPlaying?.id === id
+        ? 'Canción en cola aprobada.'
+        : 'Canción aprobada.',
+    );
   } catch (e) {
     toast.error(apiErrorMessage(e));
   }

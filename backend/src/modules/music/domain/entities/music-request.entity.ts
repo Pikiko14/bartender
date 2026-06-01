@@ -61,6 +61,10 @@ export class MusicRequest {
   approve(): void {
     this.props.status = MusicRequestStatus.APPROVED;
   }
+  revertToApproved(): void {
+    this.props.status = MusicRequestStatus.APPROVED;
+    this.props.playedAt = null;
+  }
   reject(): void {
     this.props.status = MusicRequestStatus.REJECTED;
   }
