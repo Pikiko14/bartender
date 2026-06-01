@@ -72,9 +72,7 @@ const routes: RouteRecordRaw[] = [
       },
       {
         path: 'spotify',
-        name: 'admin-spotify',
-        component: () => import('@/pages/admin/SpotifyView.vue'),
-        meta: { title: 'Spotify' },
+        redirect: (to) => ({ path: '/app/music', query: to.query }),
       },
       {
         path: 'analytics',

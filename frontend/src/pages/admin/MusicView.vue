@@ -7,16 +7,48 @@
       </div>
       <div class="flex flex-wrap gap-2">
         <a
-          v-if="shareUrl"
+          v-if="!isSpotifyProvider && shareUrl"
           :href="shareUrl"
           target="_blank"
           class="btn-ghost text-sm text-neon-cyan"
         >
           ↗ Pantalla DJ
         </a>
-        <a v-else href="/dj" target="_blank" class="btn-ghost text-sm text-neon-cyan">↗ Pantalla DJ</a>
-        <RouterLink to="/app/spotify" class="btn-ghost text-sm text-neon-cyan">🎧 Spotify</RouterLink>
+        <a
+          v-else-if="!isSpotifyProvider"
+          href="/dj"
+          target="_blank"
+          class="btn-ghost text-sm text-neon-cyan"
+        >
+          ↗ Pantalla DJ
+        </a>
+        <a
+          v-if="isSpotifyProvider"
+          href="/spotify-player"
+          target="_blank"
+          class="btn-ghost text-sm text-neon-cyan"
+        >
+          ↗ Reproductor Spotify
+        </a>
       </div>
+    </div>
+
+    <div
+      v-if="route.query.connected === '1'"
+      class="mt-4 card border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200"
+    >
+      Spotify conectado correctamente.
+    </div>
+    <div
+      v-if="route.query.error"
+      class="mt-4 card border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300"
+    >
+      Error al conectar Spotify ({{ route.query.error }}).
+    </div>
+
+    <div v-if="canManageProvider" class="mt-6 grid gap-6 lg:grid-cols-2">
+      <MusicProviderSettings :status="providerStatus" @updated="onProviderUpdated" />
+      <SpotifyConfigPanel v-if="isSpotifyProvider" :status="providerStatus" @updated="onProviderUpdated" />
     </div>
 
     <div class="mt-6 grid gap-6 lg:grid-cols-3">
@@ -121,19 +153,26 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useMusicStore } from '@/stores/music.store';
 import { useAuthStore } from '@/stores/auth.store';
 import { useBusinessStore } from '@/stores/business.store';
 import { apiErrorMessage } from '@/services/http';
 import { useToast } from '@/composables/useToast';
+import { useMusicProviderStatus } from '@/composables/useMusicProviderStatus';
 import { djShareUrl } from '@/shared/dj-share';
 import { onMusicSyncBroadcast } from '@/shared/music-sync-bus';
 import { onPlaybackSync } from '@/shared/playback-sync';
+import MusicProviderSettings from '@/components/admin/MusicProviderSettings.vue';
+import SpotifyConfigPanel from '@/components/admin/SpotifyConfigPanel.vue';
 
 const music = useMusicStore();
 const auth = useAuthStore();
 const business = useBusinessStore();
+const route = useRoute();
 const toast = useToast();
+const { status: providerStatus, isSpotifyProvider, refresh: refreshProviderStatus } =
+  useMusicProviderStatus();
 const playingId = ref<string | null>(null);
 const isPlaying = ref(true);
 const busy = ref(false);
@@ -142,6 +181,14 @@ let unregMusicSync: (() => void) | undefined;
 
 const businessSlug = computed(() => business.current?.slug ?? '');
 const shareUrl = computed(() => (businessSlug.value ? djShareUrl(businessSlug.value) : ''));
+const canManageProvider = computed(() => auth.can('music:playback'));
+
+async function onProviderUpdated() {
+  await refreshProviderStatus();
+  if (auth.hasRole('OWNER')) {
+    await business.fetchMine().catch(() => undefined);
+  }
+}
 
 function togglePlayback() {
   const businessId = auth.user?.businessId;
@@ -223,6 +270,9 @@ async function reject(id: string) {
 onMounted(async () => {
   if (auth.hasRole('OWNER')) {
     await business.fetchMine().catch(() => undefined);
+  }
+  if (canManageProvider.value) {
+    await refreshProviderStatus().catch(() => undefined);
   }
   if (auth.user?.businessId) music.bindBusiness(auth.user.businessId);
   await music.fetchQueue().catch((e) => toast.error(apiErrorMessage(e)));
