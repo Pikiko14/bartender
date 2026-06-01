@@ -133,6 +133,8 @@ export const musicApi = {
   reject: (id: string) => unwrap<MusicQueue>(http.patch(`/music/requests/${id}/reject`, {})),
   setPriority: (id: string, priority: number) =>
     unwrap<MusicRequest>(http.patch(`/music/requests/${id}/priority`, { priority })),
+  syncSpotifyQueue: () =>
+    unwrap<{ trackCount: number }>(http.post('/music/spotify/sync-queue', {})),
   playNext: () => unwrap<MusicRequest | null>(http.post('/music/play-next', {})),
   skip: () => unwrap<MusicRequest | null>(http.post('/music/skip', {})),
   playRequest: (id: string) => unwrap<MusicRequest>(http.post(`/music/requests/${id}/play`, {})),

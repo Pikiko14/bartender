@@ -178,18 +178,77 @@ export class SpotifyService {
   }
 
   async play(businessId: string, trackId: string): Promise<void> {
+    await this.syncPlaybackQueue(businessId, [trackId]);
+  }
+
+  /** Añade una pista al final de la cola del reproductor Spotify activo. */
+  async addToQueue(businessId: string, trackId: string): Promise<void> {
     const business = await this.requireSpotifyDevice(businessId);
     const { token } = await this.tokens.getValidAccessToken(businessId);
     const deviceId = business.spotifyDeviceId!;
+    const uri = encodeURIComponent(`spotify:track:${trackId}`);
+    await this.apiRequest(
+      businessId,
+      'POST',
+      `/me/player/queue?uri=${uri}&device_id=${encodeURIComponent(deviceId)}`,
+      token,
+    );
+    this.logger.log(`[Spotify] addToQueue business=${businessId} track=${trackId}`);
+  }
+
+  /**
+   * Alinea la cola del reproductor Spotify con la lista de IDs (orden Bartender).
+   * Si la pista actual coincide con la primera, encola el resto; si no, reinicia con todas.
+   */
+  async syncPlaybackQueue(businessId: string, trackIds: string[]): Promise<void> {
+    const ids = trackIds.filter(Boolean);
+    if (!ids.length) return;
+
+    const business = await this.requireSpotifyDevice(businessId);
+    const { token } = await this.tokens.getValidAccessToken(businessId);
+    const deviceId = business.spotifyDeviceId!;
+    const uris = ids.map((id) => `spotify:track:${id}`);
+
+    const playback = await this.getCurrentPlayback(businessId);
+    const currentId = this.extractPlayingTrackId(playback);
+
+    if (!currentId) {
+      await this.apiRequest(
+        businessId,
+        'PUT',
+        `/me/player/play?device_id=${encodeURIComponent(deviceId)}`,
+        token,
+        { uris },
+      );
+      this.logger.log(`[Spotify] syncQueue start business=${businessId} tracks=${ids.length}`);
+      return;
+    }
+
+    if (currentId === ids[0]) {
+      for (let i = 1; i < ids.length; i++) {
+        await this.addToQueue(businessId, ids[i]!);
+      }
+      this.logger.log(
+        `[Spotify] syncQueue append business=${businessId} added=${Math.max(0, ids.length - 1)}`,
+      );
+      return;
+    }
 
     await this.apiRequest(
       businessId,
       'PUT',
       `/me/player/play?device_id=${encodeURIComponent(deviceId)}`,
       token,
-      { uris: [`spotify:track:${trackId}`] },
+      { uris },
     );
-    this.logger.log(`[Spotify] play business=${businessId} track=${trackId} device=${deviceId}`);
+    this.logger.log(`[Spotify] syncQueue reset business=${businessId} tracks=${ids.length}`);
+  }
+
+  private extractPlayingTrackId(playback: Record<string, unknown> | null): string | null {
+    if (!playback) return null;
+    const item = playback.item as { id?: string } | undefined;
+    if (!item?.id) return null;
+    return item.id.includes(':') ? item.id.split(':').pop()! : item.id;
   }
 
   async pause(businessId: string): Promise<void> {
@@ -227,6 +286,11 @@ export class SpotifyService {
     } catch {
       return null;
     }
+  }
+
+  async getActiveTrackId(businessId: string): Promise<string | null> {
+    const playback = await this.getCurrentPlayback(businessId);
+    return this.extractPlayingTrackId(playback);
   }
 
   private async requireSpotifyDevice(businessId: string): Promise<Business> {

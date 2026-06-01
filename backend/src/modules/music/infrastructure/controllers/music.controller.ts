@@ -6,6 +6,7 @@ import { GetQueueUseCase } from '../../application/use-cases/get-queue.use-case'
 import { ModerateMusicUseCase } from '../../application/use-cases/moderate-music.use-case';
 import { PlaybackUseCase } from '../../application/use-cases/playback.use-case';
 import { ResolveMusicPlaybackUseCase } from '../../application/use-cases/resolve-music-playback.use-case';
+import { SyncSpotifyQueueUseCase } from '../../application/use-cases/sync-spotify-queue.use-case';
 
 @Controller('music')
 export class MusicController {
@@ -14,6 +15,7 @@ export class MusicController {
     private readonly moderate: ModerateMusicUseCase,
     private readonly playback: PlaybackUseCase,
     private readonly resolvePlayback: ResolveMusicPlaybackUseCase,
+    private readonly syncSpotifyQueue: SyncSpotifyQueueUseCase,
   ) {}
 
   @Get('queue')
@@ -42,6 +44,13 @@ export class MusicController {
     @Body() dto: SetPriorityDto,
   ) {
     return this.moderate.setPriority(businessId, id, dto.priority);
+  }
+
+  /** Refleja cola Bartender en la fila de reproducción de Spotify. */
+  @Post('spotify/sync-queue')
+  @RequirePermissions(Permission.MUSIC_PLAYBACK)
+  pushQueueToSpotify(@CurrentUser('businessId') businessId: string) {
+    return this.syncSpotifyQueue.execute(businessId);
   }
 
   @Post('play-next')

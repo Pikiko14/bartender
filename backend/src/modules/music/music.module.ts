@@ -9,6 +9,7 @@ import { ModerateMusicUseCase } from './application/use-cases/moderate-music.use
 import { PlaybackUseCase } from './application/use-cases/playback.use-case';
 import { RequestSongUseCase } from './application/use-cases/request-song.use-case';
 import { ResolveMusicPlaybackUseCase } from './application/use-cases/resolve-music-playback.use-case';
+import { SyncSpotifyQueueUseCase } from './application/use-cases/sync-spotify-queue.use-case';
 import { VoteSongUseCase } from './application/use-cases/vote-song.use-case';
 import { MusicController } from './infrastructure/controllers/music.controller';
 import { PublicMusicController } from './infrastructure/controllers/public-music.controller';
@@ -34,6 +35,7 @@ import { YoutubeService } from './infrastructure/services/youtube.service';
     VoteSongUseCase,
     ModerateMusicUseCase,
     PlaybackUseCase,
+    SyncSpotifyQueueUseCase,
     ResolveMusicPlaybackUseCase,
     { provide: MUSIC_REQUEST_REPOSITORY, useClass: MusicRequestMongoRepository },
   ],

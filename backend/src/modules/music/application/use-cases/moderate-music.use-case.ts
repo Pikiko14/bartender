@@ -8,6 +8,7 @@ import {
   MusicRequestRepository,
 } from '../../domain/repositories/music-request.repository';
 import { GetQueueUseCase, MusicQueueView } from './get-queue.use-case';
+import { SyncSpotifyQueueUseCase } from './sync-spotify-queue.use-case';
 import { presentMusicRequest } from '../presenters/music.presenter';
 
 @Injectable()
@@ -16,6 +17,7 @@ export class ModerateMusicUseCase {
     @Inject(MUSIC_REQUEST_REPOSITORY) private readonly requests: MusicRequestRepository,
     private readonly realtime: RealtimeService,
     private readonly getQueue: GetQueueUseCase,
+    private readonly syncSpotifyQueue: SyncSpotifyQueueUseCase,
   ) {}
 
   async approve(businessId: string, id: string): Promise<MusicQueueView> {
@@ -29,6 +31,8 @@ export class ModerateMusicUseCase {
     );
     const queue = await this.getQueue.execute(businessId);
     this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_QUEUE_UPDATED, queue);
+    const p = updated.toPrimitives();
+    await this.syncSpotifyQueue.syncAfterApprove(businessId, p.spotifyId).catch(() => undefined);
     return queue;
   }
 
