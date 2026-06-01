@@ -80,14 +80,19 @@ export class SpotifyOAuthUseCase {
     try {
       const { data } = await axios.get<{ id: string; display_name?: string }>(
         'https://api.spotify.com/v1/me',
-        { headers: { Authorization: `Bearer ${accessToken}` } },
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          timeout: 15_000,
+        },
       );
       profile = data;
     } catch (err) {
       const message = this.extractError(err);
+
+      // Log completo para diagnosticar: respuesta HTTP o error de red/TLS/DNS.
+      this.logger.error(`[Spotify] /v1/me ERROR COMPLETE business=${business.id} tokenFp=${tokenFp}`);
+
       if (axios.isAxiosError(err)) {
-        // Volcamos el cuerpo y cabeceras devueltas por Spotify para diagnosticar el 403.
-        // Redactamos cualquier cosa potencialmente sensible.
         const status = err.response?.status;
         const data = err.response?.data;
         const headers = err.response?.headers;
@@ -99,17 +104,27 @@ export class SpotifyOAuthUseCase {
             : headers;
 
         this.logger.error(
-          `[Spotify] /v1/me failed business=${business.id} tokenFp=${tokenFp} status=${status ?? '—'}`,
+          JSON.stringify({
+            name: err.name,
+            code: err.code,
+            message: err.message,
+            url: err.config?.url,
+            method: err.config?.method,
+            timeout: err.config?.timeout,
+            responseStatus: status,
+            responseData: data,
+            responseHeaders: safeHeaders,
+          }),
         );
-        this.logger.error(`[Spotify] /v1/me data=${JSON.stringify(data)}`);
-        this.logger.error(`[Spotify] /v1/me headers=${JSON.stringify(safeHeaders)}`);
-      } else {
-        this.logger.error(`[Spotify] /v1/me failed business=${business.id} tokenFp=${tokenFp}: ${message}`);
+
+        throw new BusinessRuleViolationException(
+          `Spotify OAuth: no se pudo leer /v1/me (status ${status ?? 'sin respuesta'}): ${message}`,
+        );
       }
 
-      throw new BusinessRuleViolationException(
-        `Spotify OAuth: no se pudo leer /v1/me (status ${axios.isAxiosError(err) ? err.response?.status ?? '—' : '—'}).`,
-      );
+      const generic = err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : { err };
+      this.logger.error(JSON.stringify(generic));
+      throw new BusinessRuleViolationException(`Spotify OAuth: no se pudo leer /v1/me: ${message}`);
     }
 
     business.setSpotifyConnection({
