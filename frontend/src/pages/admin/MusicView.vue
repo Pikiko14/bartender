@@ -87,7 +87,7 @@
           </div>
           <div class="flex flex-wrap gap-2 border-t border-neon-cyan/20 bg-ink-900/50 p-3">
             <button type="button" class="btn-cyan text-sm" @click="togglePlayback">
-              {{ isPlaying ? '⏸ Pausar' : '▶ Reproducir' }}
+              {{ playbackIsPlaying ? '⏸ Pausar' : '▶ Reproducir' }}
             </button>
             <button type="button" class="btn-ghost text-sm" @click="skipTrack">⏭ Saltar</button>
             <button
@@ -124,7 +124,7 @@
           </div>
           <div class="flex flex-wrap gap-2 border-t border-amber-500/20 bg-ink-900/50 p-3">
             <button type="button" class="btn-cyan text-sm" @click="toggleSpotifyPlayback">
-              {{ spotifyLive.isPlaying ? '⏸ Pausar' : '▶ Reproducir' }}
+              {{ playbackIsPlaying ? '⏸ Pausar' : '▶ Reproducir' }}
             </button>
             <button type="button" class="btn-ghost text-sm" @click="skipSpotifyTrack">⏭ Saltar</button>
             <button
@@ -235,6 +235,16 @@ const providerSettingsPath = computed(() =>
   auth.can('business:manage') ? '/app/settings/business' : '/app/settings/profile',
 );
 
+/** Estado play/pause del botón (Spotify lee API now-playing; YouTube usa isPlaying local). */
+const playbackIsPlaying = computed(() => {
+  const track = music.nowPlaying;
+  if (isSpotifyProvider.value && track?.provider === 'SPOTIFY') {
+    if (spotifyLive.value != null) return spotifyLive.value.isPlaying;
+    return isPlaying.value;
+  }
+  return isPlaying.value;
+});
+
 function togglePlayback() {
   const businessId = auth.user?.businessId;
   const track = music.nowPlaying;
@@ -256,26 +266,44 @@ async function refreshSpotifyLive() {
   try {
     const raw = await spotifyApi.nowPlaying();
     spotifyLive.value = parseSpotifyPlayback(raw);
+    if (spotifyLive.value) {
+      isPlaying.value = spotifyLive.value.isPlaying;
+    } else if (music.nowPlaying?.provider === 'SPOTIFY') {
+      isPlaying.value = false;
+    }
     if (spotifyLive.value && !music.nowPlaying) {
       await music.trySyncFromSpotifyTrack(spotifyLive.value.spotifyId);
     }
   } catch {
     spotifyLive.value = null;
+    if (music.nowPlaying?.provider === 'SPOTIFY') {
+      isPlaying.value = false;
+    }
   }
 }
 
 async function toggleSpotifyPlayback() {
   if (busy.value) return;
+  const shouldPause = playbackIsPlaying.value;
   busy.value = true;
   try {
-    if (spotifyLive.value?.isPlaying ?? isPlaying.value) {
+    if (shouldPause) {
       await spotifyApi.pause();
+      isPlaying.value = false;
+      if (spotifyLive.value) {
+        spotifyLive.value = { ...spotifyLive.value, isPlaying: false };
+      }
     } else {
       await spotifyApi.resume();
+      isPlaying.value = true;
+      if (spotifyLive.value) {
+        spotifyLive.value = { ...spotifyLive.value, isPlaying: true };
+      }
     }
     await refreshSpotifyLive();
   } catch (e) {
     toast.error(apiErrorMessage(e));
+    await refreshSpotifyLive();
   } finally {
     busy.value = false;
   }
@@ -296,8 +324,8 @@ async function skipSpotifyTrack() {
 
 watch(
   () => music.nowPlaying?.id,
-  () => {
-    isPlaying.value = true;
+  (id, prev) => {
+    if (id && id !== prev) isPlaying.value = true;
   },
 );
 

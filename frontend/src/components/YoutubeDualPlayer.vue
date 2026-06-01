@@ -5,14 +5,22 @@
   >
     <div
       :id="elementIds.a"
-      class="absolute inset-0 h-full w-full"
-      :class="activeSlot === 'a' ? 'z-20' : 'z-10 pointer-events-none'"
+      class="absolute inset-0 h-full w-full transition-opacity duration-150"
+      :class="
+        activeSlot === 'a'
+          ? 'z-20 opacity-100'
+          : 'z-0 opacity-0 pointer-events-none'
+      "
       :aria-hidden="activeSlot !== 'a'"
     />
     <div
       :id="elementIds.b"
-      class="absolute inset-0 h-full w-full"
-      :class="activeSlot === 'b' ? 'z-20' : 'z-10 pointer-events-none'"
+      class="absolute inset-0 h-full w-full transition-opacity duration-150"
+      :class="
+        activeSlot === 'b'
+          ? 'z-20 opacity-100'
+          : 'z-0 opacity-0 pointer-events-none'
+      "
       :aria-hidden="activeSlot !== 'b'"
     />
 
@@ -215,14 +223,14 @@ function resolvedYoutubeId(track: YoutubePlayerTrack): string {
 }
 
 function isSlotReadyForVideo(slot: Slot, youtubeId: string): boolean {
-  if (getVideoId(slot) !== youtubeId) return false;
-  if (preloadedReady.value[slot] === youtubeId) return true;
+  if (!slotHasLoadedVideo(slot, youtubeId)) return false;
   try {
     const state = slotPlayer(slot)?.getPlayerState();
     return (
       state === YT_PLAYER_STATE.PLAYING ||
       state === YT_PLAYER_STATE.BUFFERING ||
-      state === YT_PLAYER_STATE.PAUSED
+      state === YT_PLAYER_STATE.PAUSED ||
+      state === YT_PLAYER_STATE.CUED
     );
   } catch {
     return false;
@@ -256,12 +264,19 @@ function getVideoId(slot: Slot): string {
   }
 }
 
+function slotHasLoadedVideo(slot: Slot, youtubeId: string): boolean {
+  if (!youtubeId || loadedIds.value[slot] !== youtubeId) return false;
+  const onAir = getVideoId(slot);
+  if (onAir === youtubeId) return true;
+  return preloadedReady.value[slot] === youtubeId;
+}
+
 function isTrackActiveOnPlayer(track: YoutubePlayerTrack): boolean {
+  if (swapping.value || !track.youtubeId) return false;
   if (activeTrackId.value !== track.id) return false;
   try {
     const slot = activeSlot.value;
-    const onAir = getVideoId(slot);
-    if (onAir !== track.youtubeId) return false;
+    if (!slotHasLoadedVideo(slot, track.youtubeId)) return false;
     const state = slotPlayer(slot)?.getPlayerState();
     return state === YT_PLAYER_STATE.PLAYING || state === YT_PLAYER_STATE.BUFFERING;
   } catch {
@@ -595,10 +610,7 @@ function findSlotWithVideo(youtubeId: string, preferInactive = false): Slot | nu
     : [activeSlot.value, inactiveSlot()];
 
   for (const slot of order) {
-    if (getVideoId(slot) === youtubeId) return slot;
-    if (preloadedReady.value[slot] === youtubeId && loadedIds.value[slot] === youtubeId) {
-      return slot;
-    }
+    if (slotHasLoadedVideo(slot, youtubeId)) return slot;
   }
   return null;
 }
@@ -826,13 +838,27 @@ async function swapToPreparedTrack(
 
     await ensurePlaying(targetSlot, prepared, { restart: !resumePreload });
 
-    const playing = await waitForPlayerState(
+    let playing = await waitForPlayerState(
       targetSlot,
       [YT_PLAYER_STATE.PLAYING, YT_PLAYER_STATE.BUFFERING],
       PLAY_WAIT_MS,
     );
     if (!playing) {
-      await ensurePlaying(targetSlot, prepared);
+      await ensurePlaying(targetSlot, prepared, { restart: true });
+      playing = await waitForPlayerState(
+        targetSlot,
+        [YT_PLAYER_STATE.PLAYING, YT_PLAYER_STATE.BUFFERING],
+        PLAY_WAIT_MS,
+      );
+    }
+
+    if (getVideoId(targetSlot) !== youtubeId) {
+      await ensurePlaying(targetSlot, prepared, { restart: true });
+      await waitForPlayerState(
+        targetSlot,
+        [YT_PLAYER_STATE.PLAYING, YT_PLAYER_STATE.BUFFERING],
+        PLAY_WAIT_MS,
+      );
     }
 
     activeSlot.value = targetSlot;
@@ -860,7 +886,10 @@ async function swapToPreparedTrack(
   }
 }
 async function activateTrackInner(track: YoutubePlayerTrack) {
-  if (isTrackActiveOnPlayer(track)) {
+  const sameMeta =
+    activeTrackId.value === track.id && slotHasLoadedVideo(activeSlot.value, track.youtubeId);
+
+  if (sameMeta && isTrackActiveOnPlayer(track)) {
     syncPlayerStateFromSlot(activeSlot.value);
     autoplayBlocked.value = false;
     updateProgress();
@@ -869,14 +898,15 @@ async function activateTrackInner(track: YoutubePlayerTrack) {
     return;
   }
 
-  // Pista marcada pero iframe vacío/detenido — forzar recarga
-  if (activeTrackId.value === track.id) {
+  // Pista distinta o iframe vacío — limpiar estado y cargar de nuevo
+  if (activeTrackId.value !== track.id) {
     activeTrackId.value = null;
-    for (const slot of ['a', 'b'] as Slot[]) {
-      if (loadedIds.value[slot] === track.youtubeId && getVideoId(slot) !== track.youtubeId) {
-        loadedIds.value[slot] = '';
-        preloadedReady.value[slot] = '';
-      }
+    swappedTrackId.value = null;
+  }
+  for (const slot of ['a', 'b'] as Slot[]) {
+    if (loadedIds.value[slot] === track.youtubeId && !slotHasLoadedVideo(slot, track.youtubeId)) {
+      loadedIds.value[slot] = '';
+      preloadedReady.value[slot] = '';
     }
   }
 
@@ -1047,6 +1077,7 @@ watch(
       return;
     }
     swappedTrackId.value = null;
+    activeTrackId.value = null;
     void applyTrackChange(props.currentTrack);
   },
 );

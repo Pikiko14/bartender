@@ -416,11 +416,19 @@ watch(
 
 async function applyTrackToPlayer() {
   if (isTvCastMode.value) return;
-  const track = toTrack(music.nowPlaying);
-  if (!track) return;
-  if (playerRef.value?.isPlayingTrack(track.id)) return;
+  const track = liveTrack.value ?? toTrack(music.nowPlaying);
+  if (!track?.youtubeId) return;
+
   await nextTick();
-  playerRef.value?.switchToTrack(track);
+  const deadline = Date.now() + 15_000;
+  while (!playerRef.value && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  if (!playerRef.value) return;
+
+  if (playerRef.value.isPlayingTrack(track.id)) return;
+
+  playerRef.value.switchToTrack(track);
 }
 
 let unregMusicBroadcast: (() => void) | undefined;
@@ -631,7 +639,8 @@ onMounted(async () => {
       await initStaffDisplay();
     }
 
-    if (isTvPlayerMode.value) {
+    await nextTick();
+    if (!isTvCastMode.value) {
       await applyTrackToPlayer();
     }
 
