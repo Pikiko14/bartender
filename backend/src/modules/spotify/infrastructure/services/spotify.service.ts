@@ -58,16 +58,22 @@ export class SpotifyTokenService {
 
   async exchangeCode(code: string): Promise<SpotifyTokenResponse> {
     const redirectUri = this.config.get<string>('spotify.redirectUri') ?? '';
-    const { data } = await axios.post<SpotifyTokenResponse>(
-      this.tokenUrl,
-      new URLSearchParams({
-        grant_type: 'authorization_code',
-        code,
-        redirect_uri: redirectUri,
-      }),
-      { headers: { Authorization: this.authHeader(), 'Content-Type': 'application/x-www-form-urlencoded' } },
-    );
-    return data;
+    try {
+      const { data } = await axios.post<SpotifyTokenResponse>(
+        this.tokenUrl,
+        new URLSearchParams({
+          grant_type: 'authorization_code',
+          code,
+          redirect_uri: redirectUri,
+        }),
+        { headers: { Authorization: this.authHeader(), 'Content-Type': 'application/x-www-form-urlencoded' } },
+      );
+      return data;
+    } catch (err) {
+      const msg = this.extractError(err);
+      this.logger.error(`[Spotify] exchangeCode failed: ${msg}`);
+      throw new BusinessRuleViolationException(`Intercambio OAuth fallido: ${msg}`);
+    }
   }
 
   async refreshAccessToken(business: Business): Promise<Business> {
