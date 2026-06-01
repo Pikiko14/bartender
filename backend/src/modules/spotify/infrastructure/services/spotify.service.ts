@@ -110,11 +110,17 @@ export class SpotifyTokenService {
   async getValidAccessToken(businessId: string): Promise<{ token: string; business: Business }> {
     let business = await this.businesses.findByIdWithSpotifySecrets(businessId);
     if (!business) throw new EntityNotFoundException('Negocio', businessId);
-    if (!business.spotifyRefreshToken) {
-      throw new BusinessRuleViolationException('Spotify no está conectado.');
-    }
 
     const expiresAt = business.spotifyTokenExpiresAt?.getTime() ?? 0;
+    if (!business.spotifyRefreshToken) {
+      if (business.spotifyAccessToken && expiresAt > Date.now()) {
+        return { token: business.spotifyAccessToken, business };
+      }
+      throw new BusinessRuleViolationException(
+        'Spotify no está conectado para este local. El dueño debe ir a Configuración → Negocio → Conectar Spotify.',
+      );
+    }
+
     if (business.spotifyAccessToken && expiresAt - Date.now() > 60_000) {
       return { token: business.spotifyAccessToken, business };
     }
@@ -224,7 +230,7 @@ export class SpotifyService {
   }
 
   private async requireSpotifyDevice(businessId: string): Promise<Business> {
-    const business = await this.businesses.findById(businessId);
+    const business = await this.businesses.findByIdWithSpotifySecrets(businessId);
     if (!business) throw new EntityNotFoundException('Negocio', businessId);
     if (!business.isSpotifyConnected()) {
       throw new BusinessRuleViolationException('Spotify no está conectado para este establecimiento.');

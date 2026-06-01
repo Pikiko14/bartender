@@ -34,7 +34,7 @@
         Guardar proveedor
       </button>
       <button
-        v-if="providerChoice === 'SPOTIFY' && !status?.connected"
+        v-if="providerChoice === 'SPOTIFY' && !isEffectivelyConnected"
         type="button"
         class="btn-cyan text-sm"
         :disabled="busy"
@@ -44,14 +44,14 @@
       </button>
     </div>
 
-    <p v-if="providerChoice === 'SPOTIFY' && !status?.connected" class="mt-3 text-sm text-amber-300">
+    <p v-if="providerChoice === 'SPOTIFY' && !isEffectivelyConnected" class="mt-3 text-sm text-amber-300">
       Conecta Spotify antes de activarlo como proveedor.
     </p>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { spotifyApi } from '@/services/api';
 import { apiErrorMessage } from '@/services/http';
 import { useToast } from '@/composables/useToast';
@@ -68,6 +68,11 @@ const emit = defineEmits<{
 const toast = useToast();
 const providerChoice = ref<'YOUTUBE' | 'SPOTIFY'>('YOUTUBE');
 const busy = ref(false);
+
+/** Alineado con backend: tokens OAuth o perfil ya vinculado. */
+const isEffectivelyConnected = computed(
+  () => props.status?.connected || !!props.status?.spotifyUserId || !!props.status?.spotifyDisplayName,
+);
 
 watch(
   () => props.status?.musicProvider,
@@ -94,7 +99,7 @@ async function saveProvider() {
   try {
     // Si el usuario elige Spotify pero aún no hay conexión OAuth,
     // enviamos automáticamente al flujo de "Conectar Spotify".
-    if (providerChoice.value === 'SPOTIFY' && !props.status?.connected) {
+    if (providerChoice.value === 'SPOTIFY' && !isEffectivelyConnected.value) {
       await connect();
       return;
     }

@@ -11,8 +11,8 @@
     <dl class="mt-4 space-y-3 text-sm">
       <div class="flex justify-between gap-4">
         <dt class="text-slate-400">Spotify conectado</dt>
-        <dd :class="status?.connected ? 'text-emerald-400' : 'text-slate-400'">
-          {{ status?.connected ? 'Sí' : 'No' }}
+        <dd :class="isEffectivelyConnected ? 'text-emerald-400' : 'text-slate-400'">
+          {{ isEffectivelyConnected ? 'Sí' : 'No' }}
         </dd>
       </div>
       <div class="flex justify-between gap-4">
@@ -31,10 +31,10 @@
 
     <div class="mt-6 flex flex-wrap gap-2">
       <button type="button" class="btn-cyan text-sm" :disabled="busy" @click="connect">
-        {{ status?.connected ? 'Reconectar Spotify' : 'Conectar Spotify' }}
+        {{ isEffectivelyConnected ? 'Reconectar Spotify' : 'Conectar Spotify' }}
       </button>
       <button
-        v-if="status?.connected"
+        v-if="isEffectivelyConnected"
         type="button"
         class="btn-ghost text-sm text-red-400"
         :disabled="busy"
@@ -53,15 +53,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { spotifyApi } from '@/services/api';
 import { apiErrorMessage } from '@/services/http';
 import { useToast } from '@/composables/useToast';
 import type { SpotifyConnectionStatus } from '@/shared/spotify.types';
 
-defineProps<{
+const props = defineProps<{
   status: SpotifyConnectionStatus | null;
 }>();
+
+const isEffectivelyConnected = computed(
+  () => props.status?.connected || !!props.status?.spotifyUserId || !!props.status?.spotifyDisplayName,
+);
 
 const emit = defineEmits<{
   updated: [];

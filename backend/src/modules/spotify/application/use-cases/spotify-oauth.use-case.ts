@@ -73,69 +73,54 @@ export class SpotifyOAuthUseCase {
       throw new BusinessRuleViolationException(`Spotify OAuth: exchangeCode falló: ${message}`);
     }
 
+    if (!tokenData.refresh_token) {
+      throw new BusinessRuleViolationException(
+        'Spotify no devolvió refresh_token. Reintenta la conexión.',
+      );
+    }
+
     const accessToken = tokenData.access_token;
-    // No loguear el token en claro (credencial). Usamos huella corta para correlación.
     const tokenFp = createHash('sha256').update(accessToken).digest('hex').slice(0, 12);
-    let profile: { id: string; display_name?: string };
+
+    // Persistir tokens antes de /v1/me: búsqueda y reproductor dependen del refresh_token.
+    business.applySpotifyOAuthTokens({
+      spotifyAccessToken: accessToken,
+      spotifyRefreshToken: tokenData.refresh_token,
+      spotifyTokenExpiresAt: new Date(Date.now() + tokenData.expires_in * 1000),
+    });
+    business.setMusicProvider(MusicProvider.SPOTIFY);
+    await this.businesses.update(business);
+
     try {
-      const { data } = await axios.get<{ id: string; display_name?: string }>(
+      const { data: profile } = await axios.get<{ id: string; display_name?: string }>(
         'https://api.spotify.com/v1/me',
         {
           headers: { Authorization: `Bearer ${accessToken}` },
           timeout: 15_000,
         },
       );
-      profile = data;
+      business.setSpotifyProfile(profile.id, profile.display_name ?? null);
+      await this.businesses.update(business);
+      this.logger.log(
+        `[Spotify] connected business=${business.id} user=${profile.id} displayName=${profile.display_name ?? '—'}`,
+      );
     } catch (err) {
       const message = this.extractError(err);
-
-      // Log completo para diagnosticar: respuesta HTTP o error de red/TLS/DNS.
-      this.logger.error(`[Spotify] /v1/me ERROR COMPLETE business=${business.id} tokenFp=${tokenFp}`);
-
+      this.logger.warn(
+        `[Spotify] /v1/me failed after tokens saved business=${business.id} tokenFp=${tokenFp}: ${message}`,
+      );
       if (axios.isAxiosError(err)) {
-        const status = err.response?.status;
-        const data = err.response?.data;
-        const headers = err.response?.headers;
-        const safeHeaders =
-          headers && typeof headers === 'object'
-            ? Object.fromEntries(
-                Object.entries(headers).filter(([k]) => k.toLowerCase() !== 'authorization'),
-              )
-            : headers;
-
-        this.logger.error(
+        this.logger.warn(
           JSON.stringify({
-            name: err.name,
             code: err.code,
             message: err.message,
-            url: err.config?.url,
-            method: err.config?.method,
-            timeout: err.config?.timeout,
-            responseStatus: status,
-            responseData: data,
-            responseHeaders: safeHeaders,
+            responseStatus: err.response?.status,
+            responseData: err.response?.data,
           }),
         );
-
-        throw new BusinessRuleViolationException(
-          `Spotify OAuth: no se pudo leer /v1/me (status ${status ?? 'sin respuesta'}): ${message}`,
-        );
       }
-
-      const generic = err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : { err };
-      this.logger.error(JSON.stringify(generic));
-      throw new BusinessRuleViolationException(`Spotify OAuth: no se pudo leer /v1/me: ${message}`);
+      // OAuth exitoso: tokens guardados; perfil se puede completar en el siguiente uso.
     }
-
-    business.setSpotifyConnection({
-      spotifyUserId: profile.id,
-      spotifyDisplayName: profile.display_name ?? null,
-      spotifyAccessToken: tokenData.access_token,
-      spotifyRefreshToken: tokenData.refresh_token ?? '',
-      spotifyTokenExpiresAt: new Date(Date.now() + tokenData.expires_in * 1000),
-    });
-    business.setMusicProvider(MusicProvider.SPOTIFY);
-    await this.businesses.update(business);
 
     return { businessId: business.id, success: true };
   }

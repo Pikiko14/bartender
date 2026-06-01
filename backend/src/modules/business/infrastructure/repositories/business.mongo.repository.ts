@@ -46,9 +46,17 @@ export class BusinessMongoRepository extends BusinessRepository {
   }
 
   async update(business: Business): Promise<Business> {
-    const updated = await this.model
-      .findByIdAndUpdate(business.id, BusinessMapper.toPersistence(business), { new: true })
-      .exec();
+    const payload = BusinessMapper.toPersistence(business) as Record<string, unknown>;
+    // Campos con select:false: si no se cargaron en el dominio, no sobrescribir con null.
+    if (payload.spotifyRefreshToken == null) {
+      delete payload.spotifyAccessToken;
+      delete payload.spotifyRefreshToken;
+      delete payload.spotifyTokenExpiresAt;
+    }
+    await this.model.findByIdAndUpdate(business.id, payload).exec();
+    const fresh = await this.findByIdWithSpotifySecrets(business.id);
+    if (fresh) return fresh;
+    const updated = await this.model.findById(business.id).exec();
     return BusinessMapper.toDomain(updated as BusinessDocument);
   }
 

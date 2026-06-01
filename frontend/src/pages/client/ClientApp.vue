@@ -274,6 +274,21 @@
           </div>
         </div>
 
+        <h3 v-if="myPending.length" class="mb-2 mt-6 font-semibold text-amber-300">
+          Pendientes de aprobación ({{ myPending.length }})
+        </h3>
+        <div v-if="myPending.length" class="mb-4 space-y-2">
+          <div
+            v-for="s in myPending"
+            :key="s.id"
+            class="card flex items-center gap-3 border border-amber-500/30 p-2"
+          >
+            <img :src="s.thumbnail ?? ''" class="h-10 w-16 rounded object-cover" alt="" />
+            <span class="flex-1 truncate text-sm">{{ s.title }}</span>
+            <span class="text-xs text-amber-400">Esperando staff</span>
+          </div>
+        </div>
+
         <h3 class="mb-2 mt-6 font-semibold">En cola ({{ queue.queue.length }})</h3>
         <div class="space-y-2">
           <div v-for="s in queue.queue" :key="s.id" class="card flex items-center gap-3 p-2">
@@ -341,6 +356,7 @@ import type {
   MenuCategory,
   MenuItem,
   MusicQueue,
+  MusicRequest,
   Order,
   TableBill,
   TableEntity,
@@ -421,6 +437,17 @@ const youtubeResults = ref<YoutubeVideo[]>([]);
 const spotifyResults = ref<SpotifyTrack[]>([]);
 const isSpotifyMode = computed(() => business.value?.musicProvider === 'SPOTIFY');
 const queue = reactive<MusicQueue>({ nowPlaying: null, queue: [] });
+const myPending = ref<MusicRequest[]>([]);
+
+function trackMyPending(req: MusicRequest) {
+  if (req.requestedBy !== sessionId.value || req.status !== 'pending') return;
+  if (myPending.value.some((p) => p.id === req.id)) return;
+  myPending.value = [...myPending.value, req];
+}
+
+function dropMyPending(id: string) {
+  myPending.value = myPending.value.filter((p) => p.id !== id);
+}
 
 function addToCart(item: MenuItem) {
   const line = cart.find((l) => l.item.id === item.id);
@@ -602,6 +629,13 @@ async function search() {
   if (!musicQuery.value.trim()) return;
   try {
     if (isSpotifyMode.value && business.value?.slug) {
+      const conn = await publicSpotifyApi.connection(business.value.slug);
+      if (!conn.connected) {
+        toast.error(
+          'Spotify no está conectado en este local. El dueño debe ir a Configuración → Conectar Spotify.',
+        );
+        return;
+      }
       youtubeResults.value = [];
       spotifyResults.value = await publicSpotifyApi.search(business.value.slug, musicQuery.value);
     } else {
@@ -615,14 +649,15 @@ async function search() {
 
 async function requestYoutube(v: YoutubeVideo) {
   try {
-    await publicApi.requestSong({
+    const created = await publicApi.requestSong({
       sessionId: sessionId.value,
       youtubeId: v.youtubeId,
       title: v.title,
       thumbnail: v.thumbnail,
       channelTitle: v.channelTitle,
     });
-    toast.success('Canción pedida. El staff la revisará.');
+    trackMyPending(created);
+    toast.success('Canción pedida · pendiente de aprobación del staff.');
   } catch (e) {
     toast.error(apiErrorMessage(e));
   }
@@ -630,7 +665,7 @@ async function requestYoutube(v: YoutubeVideo) {
 
 async function requestSpotify(t: SpotifyTrack) {
   try {
-    await publicSpotifyApi.requestSong({
+    const created = await publicSpotifyApi.requestSong({
       sessionId: sessionId.value,
       spotifyId: t.id,
       title: t.title,
@@ -639,7 +674,8 @@ async function requestSpotify(t: SpotifyTrack) {
       thumbnail: t.imageUrl ?? undefined,
       durationSeconds: t.duration,
     });
-    toast.success('Canción pedida. El staff la revisará.');
+    trackMyPending(created);
+    toast.success('Canción pedida · pendiente de aprobación del staff.');
   } catch (e) {
     toast.error(apiErrorMessage(e));
   }
@@ -698,12 +734,24 @@ onMounted(async () => {
       toast.info('La cuenta de la mesa fue cerrada.');
       void reopenTableSession().catch((e) => toast.error(apiErrorMessage(e)));
     });
-    realtime.on<MusicQueue>(SocketEvents.MUSIC_QUEUE_UPDATED, (q2) => {
+    const applyPublicQueue = (q2: MusicQueue) => {
       queue.nowPlaying = q2.nowPlaying;
       queue.queue = q2.queue;
-    });
+    };
+    realtime.on<MusicQueue>(SocketEvents.MUSIC_QUEUE_UPDATED, applyPublicQueue);
     realtime.on<MusicQueue['nowPlaying']>(SocketEvents.MUSIC_PLAYING, (np) => {
       queue.nowPlaying = np;
+    });
+    realtime.on<MusicRequest>(SocketEvents.MUSIC_APPROVED, async (req) => {
+      dropMyPending(req.id);
+      const q2 = await publicApi.publicQueue(businessSlug).catch(() => null);
+      if (q2) applyPublicQueue(q2);
+    });
+    realtime.on<MusicRequest>(SocketEvents.MUSIC_REJECTED, (req) => {
+      dropMyPending(req.id);
+    });
+    realtime.on<MusicRequest>(SocketEvents.MUSIC_REQUESTED, (req) => {
+      trackMyPending(req);
     });
   } catch (e) {
     error.value = apiErrorMessage(e);

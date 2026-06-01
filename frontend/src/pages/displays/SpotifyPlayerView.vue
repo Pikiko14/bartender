@@ -63,8 +63,12 @@ import { createSpotifyPlayer, type SpotifyPlayerInstance } from '@/composables/u
 import { publicSpotifyApi, spotifyApi } from '@/services/api';
 import { apiErrorMessage } from '@/services/http';
 import { realtime, SocketEvents } from '@/socket/socket';
+import { useAuthStore } from '@/stores/auth.store';
+import { useMusicStore } from '@/stores/music.store';
 
 const route = useRoute();
+const auth = useAuthStore();
+const music = useMusicStore();
 const isPublic = computed(() => !!route.params.businessSlug);
 const businessSlug = computed(() => String(route.params.businessSlug ?? ''));
 
@@ -122,19 +126,34 @@ async function reconnect() {
     connected.value = true;
 
     player.addListener('player_state_changed', (state: unknown) => {
-      const s = state as { paused?: boolean; track_window?: { current_track?: { name: string; artists: Array<{ name: string }>; album: { images: Array<{ url: string }> } } } } | null;
+      const s = state as {
+        paused?: boolean;
+        track_window?: {
+          current_track?: {
+            id: string;
+            name: string;
+            artists: Array<{ name: string }>;
+            album: { images: Array<{ url: string }> };
+          };
+        };
+      } | null;
       if (!s?.track_window?.current_track) {
         currentTrack.value = null;
         isPlaying.value = false;
         return;
       }
       const t = s.track_window.current_track;
+      const spotifyId = t.id?.includes(':') ? t.id.split(':').pop()! : t.id;
       currentTrack.value = {
         title: t.name,
         artist: t.artists.map((a) => a.name).join(', '),
         imageUrl: t.album.images[0]?.url ?? null,
       };
       isPlaying.value = !s.paused;
+
+      if (!isPublic.value && auth.user?.businessId && spotifyId) {
+        void music.trySyncFromSpotifyTrack(spotifyId);
+      }
     });
   } catch (e) {
     error.value = apiErrorMessage(e);
@@ -145,6 +164,10 @@ async function reconnect() {
 }
 
 onMounted(async () => {
+  if (!isPublic.value && auth.user?.businessId) {
+    music.bindBusiness(auth.user.businessId);
+    await music.fetchQueue().catch(() => undefined);
+  }
   await reconnect();
   pollTimer = setInterval(() => {
     if (!connected.value && !connecting.value) void reconnect();

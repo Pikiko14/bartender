@@ -229,10 +229,14 @@ export const spotifyApi = {
   pause: () => http.post('/spotify/pause'),
   resume: () => http.post('/spotify/resume'),
   skip: () => http.post('/spotify/skip'),
-  nowPlaying: () => http.get('/spotify/now-playing'),
+  nowPlaying: () => unwrap<unknown>(http.get('/spotify/now-playing')),
 };
 
 export const publicSpotifyApi = {
+  connection: (businessSlug: string) =>
+    unwrap<{ musicProvider: string; connected: boolean; hasActiveDevice: boolean }>(
+      http.get(`/public/spotify/${businessSlug}/connection`),
+    ),
   search: (businessSlug: string, q: string) =>
     unwrap<import('@/shared/spotify.types').SpotifyTrack[]>(
       http.get(`/public/spotify/${businessSlug}/search`, { params: { q } }),

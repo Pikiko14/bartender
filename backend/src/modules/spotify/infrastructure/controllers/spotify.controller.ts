@@ -136,11 +136,23 @@ export class SpotifyController {
 export class PublicSpotifyController {
   constructor(
     private readonly spotify: SpotifyService,
+    private readonly spotifyStatus: SpotifyStatusUseCase,
     private readonly playerToken: SpotifyPlayerTokenUseCase,
     private readonly registerDevice: RegisterSpotifyDeviceUseCase,
     private readonly requestSong: RequestSpotifySongUseCase,
     private readonly getBusiness: GetBusinessUseCase,
   ) {}
+
+  @Get(':businessSlug/connection')
+  async connection(@Param('businessSlug') businessSlug: string) {
+    const business = await this.getBusiness.bySlug(businessSlug);
+    const full = await this.spotifyStatus.execute(business.id);
+    return {
+      musicProvider: full.musicProvider,
+      connected: full.connected,
+      hasActiveDevice: full.hasActiveDevice,
+    };
+  }
 
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get(':businessSlug/search')

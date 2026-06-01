@@ -89,6 +89,25 @@ export class Business {
     this.props.musicProvider = provider;
   }
 
+  /** Guarda tokens OAuth (aunque falle después la lectura de /v1/me). */
+  applySpotifyOAuthTokens(data: {
+    spotifyAccessToken: string;
+    spotifyRefreshToken: string;
+    spotifyTokenExpiresAt: Date;
+  }): void {
+    this.props.spotifyAccessToken = data.spotifyAccessToken;
+    this.props.spotifyRefreshToken = data.spotifyRefreshToken;
+    this.props.spotifyTokenExpiresAt = data.spotifyTokenExpiresAt;
+    this.props.spotifyConnectedAt = this.props.spotifyConnectedAt ?? new Date();
+    this.props.spotifyLastSyncAt = new Date();
+  }
+
+  setSpotifyProfile(spotifyUserId: string, spotifyDisplayName: string | null): void {
+    this.props.spotifyUserId = spotifyUserId;
+    this.props.spotifyDisplayName = spotifyDisplayName;
+    this.props.spotifyLastSyncAt = new Date();
+  }
+
   setSpotifyConnection(data: {
     spotifyUserId: string;
     spotifyDisplayName: string | null;
@@ -96,13 +115,12 @@ export class Business {
     spotifyRefreshToken: string;
     spotifyTokenExpiresAt: Date;
   }): void {
-    this.props.spotifyUserId = data.spotifyUserId;
-    this.props.spotifyDisplayName = data.spotifyDisplayName;
-    this.props.spotifyAccessToken = data.spotifyAccessToken;
-    this.props.spotifyRefreshToken = data.spotifyRefreshToken;
-    this.props.spotifyTokenExpiresAt = data.spotifyTokenExpiresAt;
-    this.props.spotifyConnectedAt = new Date();
-    this.props.spotifyLastSyncAt = new Date();
+    this.applySpotifyOAuthTokens({
+      spotifyAccessToken: data.spotifyAccessToken,
+      spotifyRefreshToken: data.spotifyRefreshToken,
+      spotifyTokenExpiresAt: data.spotifyTokenExpiresAt,
+    });
+    this.setSpotifyProfile(data.spotifyUserId, data.spotifyDisplayName);
   }
 
   updateSpotifyTokens(data: {
@@ -138,7 +156,9 @@ export class Business {
   }
 
   isSpotifyConnected(): boolean {
-    return !!this.props.spotifyRefreshToken && !!this.props.spotifyUserId;
+    if (this.props.spotifyRefreshToken) return true;
+    const expiresAt = this.props.spotifyTokenExpiresAt?.getTime() ?? 0;
+    return !!this.props.spotifyAccessToken && expiresAt > Date.now();
   }
 
   setSubscription(status: SubscriptionStatus): void {

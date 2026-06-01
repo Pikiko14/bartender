@@ -44,24 +44,45 @@ export const useMusicStore = defineStore('music', {
     },
     async approve(id: string) {
       await musicApi.approve(id);
+      await this.fetchQueue();
     },
     async reject(id: string) {
       await musicApi.reject(id);
+      await this.fetchQueue();
     },
     async playNext() {
       const playing = await musicApi.playNext();
+      await this.fetchQueue();
       if (playing !== undefined) this.nowPlaying = playing;
       this.broadcastIfBound();
+      return playing;
     },
     async skip() {
       const playing = await musicApi.skip();
+      await this.fetchQueue();
       if (playing !== undefined) this.nowPlaying = playing;
       this.broadcastIfBound();
+      return playing;
+    },
+
+    /** Si Spotify reproduce una pista de la cola, marca playing en BD. */
+    async trySyncFromSpotifyTrack(spotifyId: string) {
+      if (!spotifyId) return;
+      const candidates = [
+        ...this.queue.filter((q) => q.spotifyId === spotifyId),
+        ...(this.nowPlaying?.spotifyId === spotifyId ? [this.nowPlaying] : []),
+      ];
+      const match = candidates.find((c) => c.status === 'approved' || c.status === 'playing');
+      if (!match || match.status === 'playing') return;
+      await this.syncPlaying(match.id);
+      await this.fetchQueue();
     },
     async playRequest(id: string) {
       const playing = await musicApi.playRequest(id);
+      await this.fetchQueue();
       this.nowPlaying = playing;
       this.broadcastIfBound();
+      return playing;
     },
 
     async playNextPublic(businessSlug: string) {
@@ -161,6 +182,12 @@ export const useMusicStore = defineStore('music', {
       realtime.on<MusicRequest | null>(SocketEvents.MUSIC_PLAYING, (req) => {
         this.nowPlaying = req;
         this.broadcastIfBound();
+      });
+      realtime.on(SocketEvents.MUSIC_REQUESTED, () => {
+        void this.fetchQueue();
+      });
+      realtime.on(SocketEvents.MUSIC_APPROVED, () => {
+        void this.fetchQueue();
       });
     },
 

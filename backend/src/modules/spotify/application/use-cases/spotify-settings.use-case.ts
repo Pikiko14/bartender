@@ -13,7 +13,7 @@ export class SpotifyStatusUseCase {
   constructor(@Inject(BUSINESS_REPOSITORY) private readonly businesses: BusinessRepository) {}
 
   async execute(businessId: string): Promise<SpotifyConnectionView> {
-    const business = await this.businesses.findById(businessId);
+    const business = await this.businesses.findByIdWithSpotifySecrets(businessId);
     if (!business) throw new EntityNotFoundException('Negocio', businessId);
 
     return {
@@ -34,7 +34,7 @@ export class SpotifyDisconnectUseCase {
   constructor(@Inject(BUSINESS_REPOSITORY) private readonly businesses: BusinessRepository) {}
 
   async execute(businessId: string): Promise<SpotifyConnectionView> {
-    const business = await this.businesses.findById(businessId);
+    const business = await this.businesses.findByIdWithSpotifySecrets(businessId);
     if (!business) throw new EntityNotFoundException('Negocio', businessId);
     business.clearSpotifyConnection();
     await this.businesses.update(business);
@@ -56,7 +56,7 @@ export class RegisterSpotifyDeviceUseCase {
   constructor(@Inject(BUSINESS_REPOSITORY) private readonly businesses: BusinessRepository) {}
 
   async execute(businessId: string, deviceId: string): Promise<SpotifyConnectionView> {
-    const business = await this.businesses.findById(businessId);
+    const business = await this.businesses.findByIdWithSpotifySecrets(businessId);
     if (!business) throw new EntityNotFoundException('Negocio', businessId);
     business.setSpotifyDevice(deviceId);
     await this.businesses.update(business);
@@ -79,7 +79,7 @@ export class UpdateMusicProviderUseCase {
   constructor(@Inject(BUSINESS_REPOSITORY) private readonly businesses: BusinessRepository) {}
 
   async execute(businessId: string, provider: MusicProvider) {
-    const business = await this.businesses.findById(businessId);
+    const business = await this.businesses.findByIdWithSpotifySecrets(businessId);
     if (!business) throw new EntityNotFoundException('Negocio', businessId);
     if (provider === MusicProvider.SPOTIFY && !business.isSpotifyConnected()) {
       throw new BusinessRuleViolationException('Conecta Spotify antes de activarlo como proveedor.');
