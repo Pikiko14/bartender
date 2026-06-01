@@ -1,3 +1,4 @@
+import { MusicProvider } from '@shared/enums/music-provider.enum';
 import { Business, SubscriptionStatus } from '../../domain/entities/business.entity';
 
 export interface BusinessView {
@@ -10,6 +11,7 @@ export interface BusinessView {
   ownerId: string;
   active: boolean;
   subscriptionStatus: SubscriptionStatus;
+  musicProvider: MusicProvider;
 }
 
 export function presentBusiness(business: Business): BusinessView {
@@ -24,5 +26,6 @@ export function presentBusiness(business: Business): BusinessView {
     ownerId: p.ownerId,
     active: p.active,
     subscriptionStatus: p.subscriptionStatus,
+    musicProvider: p.musicProvider,
   };
 }

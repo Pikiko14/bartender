@@ -1,3 +1,4 @@
+import { MusicProvider } from '@shared/enums/music-provider.enum';
 import { MusicRequest, MusicRequestStatus } from '../../domain/entities/music-request.entity';
 
 export interface MusicRequestView {
@@ -13,6 +14,10 @@ export interface MusicRequestView {
   votes: number;
   playedAt: Date | null;
   createdAt?: Date;
+  provider: MusicProvider;
+  spotifyId: string | null;
+  artist: string | null;
+  album: string | null;
 }
 
 export function presentMusicRequest(request: MusicRequest): MusicRequestView {
@@ -30,5 +35,9 @@ export function presentMusicRequest(request: MusicRequest): MusicRequestView {
     votes: p.votes,
     playedAt: p.playedAt,
     createdAt: p.createdAt,
+    provider: p.provider,
+    spotifyId: p.spotifyId,
+    artist: p.artist,
+    album: p.album,
   };
 }

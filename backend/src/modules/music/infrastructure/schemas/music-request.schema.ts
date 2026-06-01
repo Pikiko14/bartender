@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
+import { MusicProvider } from '@shared/enums/music-provider.enum';
 import { MusicRequestStatus } from '../../domain/entities/music-request.entity';
 
 export type MusicRequestDocument = HydratedDocument<MusicRequestModel>;
@@ -12,7 +13,7 @@ export class MusicRequestModel {
   @Prop({ required: true })
   title!: string;
 
-  @Prop({ required: true })
+  @Prop({ default: '' })
   youtubeId!: string;
 
   @Prop({ type: String, default: null })
@@ -41,6 +42,18 @@ export class MusicRequestModel {
 
   @Prop({ type: Date, default: null })
   playedAt!: Date | null;
+
+  @Prop({ enum: MusicProvider, default: MusicProvider.YOUTUBE, index: true })
+  provider!: MusicProvider;
+
+  @Prop({ type: String, default: null, index: true })
+  spotifyId!: string | null;
+
+  @Prop({ type: String, default: null })
+  artist!: string | null;
+
+  @Prop({ type: String, default: null })
+  album!: string | null;
 }
 
 export const MusicRequestSchema = SchemaFactory.createForClass(MusicRequestModel);

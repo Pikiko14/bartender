@@ -21,6 +21,7 @@ import { OrdersModule } from '@modules/orders/orders.module';
 import { MusicModule } from '@modules/music/music.module';
 import { AnalyticsModule } from '@modules/analytics/analytics.module';
 import { SubscriptionsModule } from '@modules/subscriptions/subscriptions.module';
+import { SpotifyModule } from '@modules/spotify/spotify.module';
 import { CustomersModule } from '@modules/customers/customers.module';
 import { UploadsModule } from '@infrastructure/uploads/uploads.module';
 
@@ -55,6 +56,7 @@ import { UploadsModule } from '@infrastructure/uploads/uploads.module';
     OrdersModule,
     CustomersModule,
     MusicModule,
+    SpotifyModule,
     AnalyticsModule,
     SubscriptionsModule,
     UploadsModule,

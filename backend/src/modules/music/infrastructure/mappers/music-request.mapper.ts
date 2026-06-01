@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { MusicProvider } from '@shared/enums/music-provider.enum';
 import { MusicRequest } from '../../domain/entities/music-request.entity';
 import { MusicRequestDocument } from '../schemas/music-request.schema';
 
@@ -8,7 +9,7 @@ export class MusicRequestMapper {
       id: doc._id.toString(),
       businessId: doc.businessId.toString(),
       title: doc.title,
-      youtubeId: doc.youtubeId,
+      youtubeId: doc.youtubeId ?? '',
       thumbnail: doc.thumbnail,
       channelTitle: doc.channelTitle,
       durationSeconds: doc.durationSeconds,
@@ -18,6 +19,10 @@ export class MusicRequestMapper {
       votes: doc.votes,
       voters: doc.voters ?? [],
       playedAt: doc.playedAt,
+      provider: doc.provider ?? MusicProvider.YOUTUBE,
+      spotifyId: doc.spotifyId ?? null,
+      artist: doc.artist ?? null,
+      album: doc.album ?? null,
       createdAt: (doc as unknown as { createdAt?: Date }).createdAt,
     });
   }
@@ -37,6 +42,10 @@ export class MusicRequestMapper {
       votes: p.votes,
       voters: p.voters,
       playedAt: p.playedAt,
+      provider: p.provider,
+      spotifyId: p.spotifyId,
+      artist: p.artist,
+      album: p.album,
     };
   }
 }

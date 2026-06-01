@@ -1,3 +1,5 @@
+import { MusicProvider } from '@shared/enums/music-provider.enum';
+
 export enum MusicRequestStatus {
   PENDING = 'pending',
   APPROVED = 'approved',
@@ -21,6 +23,10 @@ export interface MusicRequestProps {
   votes: number;
   voters: string[];
   playedAt: Date | null;
+  provider: MusicProvider;
+  spotifyId: string | null;
+  artist: string | null;
+  album: string | null;
   createdAt?: Date;
 }
 
@@ -38,6 +44,12 @@ export class MusicRequest {
   }
   get youtubeId(): string {
     return this.props.youtubeId;
+  }
+  get provider(): MusicProvider {
+    return this.props.provider;
+  }
+  get spotifyId(): string | null {
+    return this.props.spotifyId;
   }
   get priority(): number {
     return this.props.priority;
@@ -73,6 +85,7 @@ export class MusicRequest {
     if (source.thumbnail !== undefined) this.props.thumbnail = source.thumbnail;
     if (source.channelTitle !== undefined) this.props.channelTitle = source.channelTitle;
   }
+
   setPriority(priority: number): void {
     this.props.priority = priority;
   }

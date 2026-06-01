@@ -23,6 +23,15 @@ export class BusinessMongoRepository extends BusinessRepository {
     return doc ? BusinessMapper.toDomain(doc) : null;
   }
 
+  async findByIdWithSpotifySecrets(id: string): Promise<Business | null> {
+    if (!Types.ObjectId.isValid(id)) return null;
+    const doc = await this.model
+      .findById(id)
+      .select('+spotifyAccessToken +spotifyRefreshToken +spotifyTokenExpiresAt')
+      .exec();
+    return doc ? BusinessMapper.toDomain(doc) : null;
+  }
+
   async findBySlug(slug: string): Promise<Business | null> {
     const doc = await this.model.findOne({ slug }).exec();
     return doc ? BusinessMapper.toDomain(doc) : null;

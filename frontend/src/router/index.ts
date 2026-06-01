@@ -71,6 +71,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Música' },
       },
       {
+        path: 'spotify',
+        name: 'admin-spotify',
+        component: () => import('@/pages/admin/SpotifyView.vue'),
+        meta: { title: 'Spotify' },
+      },
+      {
         path: 'analytics',
         name: 'admin-analytics',
         component: () => import('@/pages/admin/AnalyticsView.vue'),
@@ -83,6 +89,18 @@ const routes: RouteRecordRaw[] = [
         meta: { title: 'Plan' },
       },
     ],
+  },
+  {
+    path: '/spotify-player',
+    name: 'spotify-player',
+    component: () => import('@/pages/displays/SpotifyPlayerView.vue'),
+    meta: { requiresAuth: true, title: 'Reproductor Spotify' },
+  },
+  {
+    path: '/b/:businessSlug/spotify-player',
+    name: 'spotify-player-shared',
+    component: () => import('@/pages/displays/SpotifyPlayerView.vue'),
+    meta: { title: 'Reproductor Spotify' },
   },
   {
     path: '/b/:businessSlug/dj',

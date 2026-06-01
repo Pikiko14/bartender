@@ -3,6 +3,7 @@ import { BusinessRuleViolationException, EntityNotFoundException, ForbiddenDomai
 import { MusicRequestStatus } from '../../domain/entities/music-request.entity';
 import { SocketEvents } from '@shared/realtime/socket-events';
 import { RealtimeService } from '@infrastructure/realtime/realtime.service';
+import { SpotifyPlaybackBridge } from '@modules/spotify/infrastructure/services/spotify-playback.bridge';
 import {
   MUSIC_REQUEST_REPOSITORY,
   MusicRequestRepository,
@@ -18,6 +19,7 @@ export class PlaybackUseCase {
     private readonly realtime: RealtimeService,
     private readonly getQueue: GetQueueUseCase,
     private readonly resolvePlayback: ResolveMusicPlaybackUseCase,
+    private readonly spotifyPlayback: SpotifyPlaybackBridge,
   ) {}
 
   /** Reproduce la siguiente canción aprobada (FIFO con prioridad/votos). */
@@ -44,6 +46,7 @@ export class PlaybackUseCase {
       const updated = await this.requests.update(playable);
       const view = presentMusicRequest(updated);
       this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, view);
+      await this.spotifyPlayback.onTrackStarted(businessId, view);
       await this.emitQueue(businessId);
       return view;
     }
@@ -103,6 +106,7 @@ export class PlaybackUseCase {
       const updated = await this.requests.update(playable);
       const view = presentMusicRequest(updated);
       this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, view);
+      await this.spotifyPlayback.onTrackStarted(businessId, view);
       await this.emitQueue(businessId);
       return view;
     }
@@ -141,6 +145,7 @@ export class PlaybackUseCase {
     const updated = await this.requests.update(playable);
     const view = presentMusicRequest(updated);
     this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, view);
+    await this.spotifyPlayback.onTrackStarted(businessId, view);
     await this.emitQueue(businessId);
     return view;
   }

@@ -48,6 +48,12 @@ export interface MercadoPagoConfig {
   webhookBaseUrl: string;
 }
 
+export interface SpotifyConfig {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}
+
 export interface Configuration {
   app: AppConfig;
   mongo: MongoConfig;
@@ -56,6 +62,7 @@ export interface Configuration {
   security: SecurityConfig;
   qr: QrConfig;
   youtube: YoutubeConfig;
+  spotify: SpotifyConfig;
   uploads: UploadsConfig;
   mercadoPago: MercadoPagoConfig;
 }
@@ -139,6 +146,13 @@ export default (): Configuration => ({
   },
   youtube: {
     apiKey: process.env.YOUTUBE_API_KEY ?? '',
+  },
+  spotify: {
+    clientId: process.env.SPOTIFY_CLIENT_ID ?? '',
+    clientSecret: process.env.SPOTIFY_CLIENT_SECRET ?? '',
+    redirectUri:
+      process.env.SPOTIFY_REDIRECT_URI ??
+      `${process.env.PUBLIC_API_URL ?? 'http://localhost:3000'}/api/spotify/callback`,
   },
   uploads: {
     dir: process.env.UPLOAD_DIR ?? 'uploads',

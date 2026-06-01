@@ -14,9 +14,8 @@
         >
           ↗ Pantalla DJ
         </a>
-        <a v-else href="/dj" target="_blank" class="btn-ghost text-sm text-neon-cyan">
-          ↗ Pantalla DJ
-        </a>
+        <a v-else href="/dj" target="_blank" class="btn-ghost text-sm text-neon-cyan">↗ Pantalla DJ</a>
+        <RouterLink to="/app/spotify" class="btn-ghost text-sm text-neon-cyan">🎧 Spotify</RouterLink>
       </div>
     </div>
 

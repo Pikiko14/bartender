@@ -27,6 +27,8 @@ export interface AuthResponse {
   refreshToken: string;
 }
 
+export type MusicProvider = 'YOUTUBE' | 'SPOTIFY';
+
 export interface Business {
   id: string;
   name: string;
@@ -37,6 +39,7 @@ export interface Business {
   ownerId: string;
   active: boolean;
   subscriptionStatus: string;
+  musicProvider?: MusicProvider;
 }
 
 export interface TableEntity {
@@ -111,6 +114,10 @@ export interface MusicRequest {
   votes: number;
   playedAt: string | null;
   createdAt?: string;
+  provider?: MusicProvider;
+  spotifyId?: string | null;
+  artist?: string | null;
+  album?: string | null;
 }
 
 export interface MusicQueue {

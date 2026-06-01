@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { v4 as uuid } from 'uuid';
 import { slugify } from '@shared/utils/slug.util';
+import { MusicProvider } from '@shared/enums/music-provider.enum';
 import {
   USER_REPOSITORY,
   UserRepository,
@@ -32,6 +33,15 @@ export class CreateBusinessUseCase {
       ownerId,
       active: true,
       subscriptionStatus: SubscriptionStatus.TRIAL,
+      musicProvider: MusicProvider.YOUTUBE,
+      spotifyUserId: null,
+      spotifyDisplayName: null,
+      spotifyAccessToken: null,
+      spotifyRefreshToken: null,
+      spotifyTokenExpiresAt: null,
+      spotifyDeviceId: null,
+      spotifyConnectedAt: null,
+      spotifyLastSyncAt: null,
     });
 
     const created = await this.businesses.create(business);

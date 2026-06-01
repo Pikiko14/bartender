@@ -210,6 +210,52 @@ export const publicApi = {
   ) => unwrap<MusicRequest>(http.patch(`/public/music/${businessSlug}/requests/${id}/playback-source`, body)),
 };
 
+// ---- Spotify ----
+export const spotifyApi = {
+  connect: () => unwrap<{ url: string }>(http.get('/spotify/connect')),
+  status: () => unwrap<import('@/shared/spotify.types').SpotifyConnectionStatus>(http.get('/spotify/status')),
+  disconnect: () =>
+    unwrap<import('@/shared/spotify.types').SpotifyConnectionStatus>(http.delete('/spotify/disconnect')),
+  registerDevice: (deviceId: string) =>
+    unwrap<import('@/shared/spotify.types').SpotifyConnectionStatus>(
+      http.post('/spotify/device', { deviceId }),
+    ),
+  playerToken: () =>
+    unwrap<import('@/shared/spotify.types').SpotifyPlayerToken>(http.get('/spotify/player-token')),
+  setMusicProvider: (musicProvider: 'YOUTUBE' | 'SPOTIFY') =>
+    unwrap<{ musicProvider: string }>(http.patch('/spotify/music-provider', { musicProvider })),
+  search: (q: string) =>
+    unwrap<import('@/shared/spotify.types').SpotifyTrack[]>(http.get('/spotify/search', { params: { q } })),
+  pause: () => http.post('/spotify/pause'),
+  resume: () => http.post('/spotify/resume'),
+  skip: () => http.post('/spotify/skip'),
+  nowPlaying: () => http.get('/spotify/now-playing'),
+};
+
+export const publicSpotifyApi = {
+  search: (businessSlug: string, q: string) =>
+    unwrap<import('@/shared/spotify.types').SpotifyTrack[]>(
+      http.get(`/public/spotify/${businessSlug}/search`, { params: { q } }),
+    ),
+  requestSong: (body: {
+    sessionId: string;
+    spotifyId: string;
+    title: string;
+    artist?: string;
+    album?: string;
+    thumbnail?: string;
+    durationSeconds?: number;
+  }) => unwrap<MusicRequest>(http.post('/public/spotify/request', body)),
+  playerToken: (businessSlug: string) =>
+    unwrap<import('@/shared/spotify.types').SpotifyPlayerToken>(
+      http.get(`/public/spotify/${businessSlug}/player-token`),
+    ),
+  registerDevice: (businessSlug: string, deviceId: string) =>
+    unwrap<import('@/shared/spotify.types').SpotifyConnectionStatus>(
+      http.post(`/public/spotify/${businessSlug}/device`, { deviceId }),
+    ),
+};
+
 // ---- Planes y suscripciones ----
 export const plansApi = {
   publicList: () => unwrap<import('@/shared/types').Plan[]>(http.get('/public/plans')),

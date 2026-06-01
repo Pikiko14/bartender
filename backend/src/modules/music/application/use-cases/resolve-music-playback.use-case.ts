@@ -6,6 +6,7 @@ import {
 } from '@core/domain/exceptions';
 import { SocketEvents } from '@shared/realtime/socket-events';
 import { RealtimeService } from '@infrastructure/realtime/realtime.service';
+import { MusicProvider } from '@shared/enums/music-provider.enum';
 import { MusicRequest } from '../../domain/entities/music-request.entity';
 import {
   MUSIC_REQUEST_REPOSITORY,
@@ -26,17 +27,21 @@ export class ResolveMusicPlaybackUseCase {
 
   /** Devuelve null si no hay versión embeddable (marca skipped internamente). */
   async ensurePlayable(request: MusicRequest): Promise<MusicRequest | null> {
+    const p = request.toPrimitives();
+    if (p.provider === MusicProvider.SPOTIFY) {
+      return p.spotifyId ? request : null;
+    }
+
     const resolved = await this.youtube.resolveForPlayback({
-      youtubeId: request.toPrimitives().youtubeId,
-      title: request.toPrimitives().title,
-      channelTitle: request.toPrimitives().channelTitle ?? '',
-      thumbnail: request.toPrimitives().thumbnail ?? '',
-      durationSeconds: request.toPrimitives().durationSeconds,
+      youtubeId: p.youtubeId,
+      title: p.title,
+      channelTitle: p.channelTitle ?? '',
+      thumbnail: p.thumbnail ?? '',
+      durationSeconds: p.durationSeconds,
     });
 
     if (!resolved) return null;
 
-    const p = request.toPrimitives();
     if (
       resolved.youtubeId !== p.youtubeId ||
       resolved.title !== p.title ||

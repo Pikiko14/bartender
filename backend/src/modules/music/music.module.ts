@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { BusinessModule } from '@modules/business/business.module';
 import { SessionsModule } from '@modules/sessions/sessions.module';
+import { SpotifyModule } from '@modules/spotify/spotify.module';
 import { MUSIC_REQUEST_REPOSITORY } from './domain/repositories/music-request.repository';
 import { GetQueueUseCase } from './application/use-cases/get-queue.use-case';
 import { ModerateMusicUseCase } from './application/use-cases/moderate-music.use-case';
@@ -23,6 +24,7 @@ import { YoutubeService } from './infrastructure/services/youtube.service';
     MongooseModule.forFeature([{ name: MusicRequestModel.name, schema: MusicRequestSchema }]),
     SessionsModule,
     BusinessModule,
+    forwardRef(() => SpotifyModule),
   ],
   controllers: [MusicController, PublicMusicController],
   providers: [
@@ -35,6 +37,6 @@ import { YoutubeService } from './infrastructure/services/youtube.service';
     ResolveMusicPlaybackUseCase,
     { provide: MUSIC_REQUEST_REPOSITORY, useClass: MusicRequestMongoRepository },
   ],
-  exports: [MUSIC_REQUEST_REPOSITORY],
+  exports: [MUSIC_REQUEST_REPOSITORY, GetQueueUseCase],
 })
 export class MusicModule {}

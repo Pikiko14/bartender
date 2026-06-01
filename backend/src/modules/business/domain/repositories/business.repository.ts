@@ -3,6 +3,8 @@ import { Business } from '../entities/business.entity';
 export abstract class BusinessRepository {
   abstract create(business: Business): Promise<Business>;
   abstract findById(id: string): Promise<Business | null>;
+  /** Incluye tokens Spotify (campos con select: false). */
+  abstract findByIdWithSpotifySecrets(id: string): Promise<Business | null>;
   abstract findBySlug(slug: string): Promise<Business | null>;
   abstract findByOwner(ownerId: string): Promise<Business[]>;
   abstract update(business: Business): Promise<Business>;

@@ -35,6 +35,9 @@
         <a v-else href="/dj" target="_blank" class="block text-xs text-slate-500 hover:text-slate-300"
           >↗ Pantalla DJ</a
         >
+        <a href="/spotify-player" target="_blank" class="block text-xs text-slate-500 hover:text-slate-300"
+          >↗ Reproductor Spotify</a
+        >
         <a href="/kds" target="_blank" class="block text-xs text-slate-500 hover:text-slate-300"
           >↗ Pantalla cocina (KDS)</a
         >
@@ -104,6 +107,7 @@ const links = [
   { to: '/app/tables', label: 'Mesas', icon: '🪑', perm: 'table:view' },
   { to: '/app/users', label: 'Usuarios', icon: '👥', perm: 'user:view' },
   { to: '/app/music', label: 'Música', icon: '🎵', perm: 'music:moderate' },
+  { to: '/app/spotify', label: 'Spotify', icon: '🎧', perm: 'music:playback' },
   { to: '/app/plans', label: 'Plan', icon: '💎', perm: 'business:manage' },
   { to: '/app/analytics', label: 'Analytics', icon: '📈', perm: 'analytics:view' },
 ];

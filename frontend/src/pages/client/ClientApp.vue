@@ -248,11 +248,29 @@
           <button class="btn-cyan text-sm">Buscar</button>
         </form>
 
-        <div v-if="results.length" class="mt-4 space-y-2">
-          <div v-for="v in results" :key="v.youtubeId" class="card flex items-center gap-3 p-2">
+        <div v-if="youtubeResults.length" class="mt-4 space-y-2">
+          <div
+            v-for="v in youtubeResults"
+            :key="v.youtubeId"
+            class="card flex items-center gap-3 p-2"
+          >
             <img :src="v.thumbnail" class="h-10 w-16 rounded object-cover" />
             <span class="flex-1 truncate text-sm">{{ v.title }}</span>
-            <button class="btn-primary px-3 py-1.5 text-xs" @click="request(v)">Pedir</button>
+            <button class="btn-primary px-3 py-1.5 text-xs" @click="requestYoutube(v)">Pedir</button>
+          </div>
+        </div>
+        <div v-if="spotifyResults.length" class="mt-4 space-y-2">
+          <div v-for="t in spotifyResults" :key="t.id" class="card flex items-center gap-3 p-2">
+            <img
+              :src="t.imageUrl ?? ''"
+              class="h-10 w-10 rounded object-cover"
+              alt=""
+            />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm">{{ t.title }}</p>
+              <p class="truncate text-xs text-slate-500">{{ t.artist }}</p>
+            </div>
+            <button class="btn-primary px-3 py-1.5 text-xs" @click="requestSpotify(t)">Pedir</button>
           </div>
         </div>
 
@@ -308,7 +326,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import MenuImage from '@/components/MenuImage.vue';
 import OrderItemLine from '@/components/OrderItemLine.vue';
-import { publicApi } from '@/services/api';
+import { publicApi, publicSpotifyApi } from '@/services/api';
 import { realtime, SocketEvents } from '@/socket/socket';
 import { formatMoney } from '@/shared/format';
 import { categoryIcon } from '@/shared/menu-icons';
@@ -317,6 +335,7 @@ import { apiErrorMessage } from '@/services/http';
 import { setDocumentTitle } from '@/shared/document-title';
 import { useToast } from '@/composables/useToast';
 import ToastHost from '@/components/ToastHost.vue';
+import type { SpotifyTrack } from '@/shared/spotify.types';
 import type {
   Business,
   MenuCategory,
@@ -398,7 +417,9 @@ const sending = ref(false);
 const cartTotal = computed(() => cart.reduce((acc, l) => acc + l.item.price * l.qty, 0));
 
 const musicQuery = ref('');
-const results = ref<YoutubeVideo[]>([]);
+const youtubeResults = ref<YoutubeVideo[]>([]);
+const spotifyResults = ref<SpotifyTrack[]>([]);
+const isSpotifyMode = computed(() => business.value?.musicProvider === 'SPOTIFY');
 const queue = reactive<MusicQueue>({ nowPlaying: null, queue: [] });
 
 function addToCart(item: MenuItem) {
@@ -580,13 +601,19 @@ async function submitOrder() {
 async function search() {
   if (!musicQuery.value.trim()) return;
   try {
-    results.value = await publicApi.searchMusic(musicQuery.value);
+    if (isSpotifyMode.value && business.value?.slug) {
+      youtubeResults.value = [];
+      spotifyResults.value = await publicSpotifyApi.search(business.value.slug, musicQuery.value);
+    } else {
+      spotifyResults.value = [];
+      youtubeResults.value = await publicApi.searchMusic(musicQuery.value);
+    }
   } catch (e) {
     toast.error(apiErrorMessage(e));
   }
 }
 
-async function request(v: YoutubeVideo) {
+async function requestYoutube(v: YoutubeVideo) {
   try {
     await publicApi.requestSong({
       sessionId: sessionId.value,
@@ -594,6 +621,23 @@ async function request(v: YoutubeVideo) {
       title: v.title,
       thumbnail: v.thumbnail,
       channelTitle: v.channelTitle,
+    });
+    toast.success('Canción pedida. El staff la revisará.');
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
+  }
+}
+
+async function requestSpotify(t: SpotifyTrack) {
+  try {
+    await publicSpotifyApi.requestSong({
+      sessionId: sessionId.value,
+      spotifyId: t.id,
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      thumbnail: t.imageUrl ?? undefined,
+      durationSeconds: t.duration,
     });
     toast.success('Canción pedida. El staff la revisará.');
   } catch (e) {

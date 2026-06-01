@@ -1,22 +1,21 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { v4 as uuid } from 'uuid';
-import { MusicProvider } from '@shared/enums/music-provider.enum';
 import { ForbiddenDomainException } from '@core/domain/exceptions';
+import { MusicProvider } from '@shared/enums/music-provider.enum';
 import { SocketEvents } from '@shared/realtime/socket-events';
 import { RealtimeService } from '@infrastructure/realtime/realtime.service';
 import { GuestSessionService } from '@modules/sessions/application/guest-session.service';
-import { MusicRequest, MusicRequestStatus } from '../../domain/entities/music-request.entity';
+import { MusicRequest, MusicRequestStatus } from '@modules/music/domain/entities/music-request.entity';
 import {
   MUSIC_REQUEST_REPOSITORY,
   MusicRequestRepository,
-} from '../../domain/repositories/music-request.repository';
-import { RequestSongDto } from '../dto/music.dto';
-import { GetQueueUseCase } from './get-queue.use-case';
-import { presentMusicRequest } from '../presenters/music.presenter';
+} from '@modules/music/domain/repositories/music-request.repository';
+import { GetQueueUseCase } from '@modules/music/application/use-cases/get-queue.use-case';
+import { presentMusicRequest } from '@modules/music/application/presenters/music.presenter';
+import { RegisterSpotifySongDto } from '../dto/spotify.dto';
 
 @Injectable()
-export class RequestSongUseCase {
-  // Anti-spam: máximo de canciones por sesión por ventana.
+export class RequestSpotifySongUseCase {
   private readonly spamLimit = 3;
   private readonly windowSeconds = 120;
 
@@ -27,7 +26,7 @@ export class RequestSongUseCase {
     private readonly getQueue: GetQueueUseCase,
   ) {}
 
-  async execute(dto: RequestSongDto) {
+  async execute(dto: RegisterSpotifySongDto) {
     const session = await this.sessions.get(dto.sessionId);
 
     const since = new Date(Date.now() - this.windowSeconds * 1000);
@@ -46,9 +45,9 @@ export class RequestSongUseCase {
       id: uuid(),
       businessId: session.businessId,
       title: dto.title,
-      youtubeId: dto.youtubeId,
+      youtubeId: '',
       thumbnail: dto.thumbnail ?? null,
-      channelTitle: dto.channelTitle ?? null,
+      channelTitle: dto.artist ?? null,
       durationSeconds: dto.durationSeconds ?? null,
       requestedBy: session.sessionId,
       status: MusicRequestStatus.PENDING,
@@ -56,10 +55,10 @@ export class RequestSongUseCase {
       votes: 0,
       voters: [],
       playedAt: null,
-      provider: MusicProvider.YOUTUBE,
-      spotifyId: null,
-      artist: null,
-      album: null,
+      provider: MusicProvider.SPOTIFY,
+      spotifyId: dto.spotifyId,
+      artist: dto.artist ?? null,
+      album: dto.album ?? null,
     });
 
     const created = await this.requests.create(request);
