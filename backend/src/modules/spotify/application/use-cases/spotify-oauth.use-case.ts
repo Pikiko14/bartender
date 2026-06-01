@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { createHmac, randomBytes } from 'crypto';
@@ -23,6 +23,8 @@ interface OAuthStatePayload {
 
 @Injectable()
 export class SpotifyOAuthUseCase {
+  private readonly logger = new Logger(SpotifyOAuthUseCase.name);
+
   constructor(
     private readonly config: ConfigService,
     @Inject(BUSINESS_REPOSITORY) private readonly businesses: BusinessRepository,
@@ -57,12 +59,33 @@ export class SpotifyOAuthUseCase {
       throw new ForbiddenDomainException('No puedes conectar Spotify para este negocio.');
     }
 
-    const tokenData = await this.tokens.exchangeCode(code);
-
-    const { data: profile } = await axios.get<{ id: string; display_name?: string }>(
-      'https://api.spotify.com/v1/me',
-      { headers: { Authorization: `Bearer ${tokenData.access_token}` } },
+    const redirectUri = this.config.get<string>('spotify.redirectUri') ?? '';
+    this.logger.log(
+      `[Spotify] handleCallback start business=${business.id} redirectUri=${redirectUri}`,
     );
+
+    let tokenData: Awaited<ReturnType<SpotifyTokenService['exchangeCode']>>;
+    try {
+      tokenData = await this.tokens.exchangeCode(code);
+    } catch (err) {
+      const message = this.extractError(err);
+      this.logger.error(`[Spotify] exchangeCode failed business=${business.id}: ${message}`);
+      throw new BusinessRuleViolationException(`Spotify OAuth: exchangeCode falló: ${message}`);
+    }
+
+    const accessToken = tokenData.access_token;
+    let profile: { id: string; display_name?: string };
+    try {
+      const { data } = await axios.get<{ id: string; display_name?: string }>(
+        'https://api.spotify.com/v1/me',
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      profile = data;
+    } catch (err) {
+      const message = this.extractError(err);
+      this.logger.error(`[Spotify] fetch /v1/me failed business=${business.id}: ${message}`);
+      throw new BusinessRuleViolationException(`Spotify OAuth: no se pudo leer /v1/me: ${message}`);
+    }
 
     business.setSpotifyConnection({
       spotifyUserId: profile.id,
@@ -91,5 +114,17 @@ export class SpotifyOAuthUseCase {
     const expected = createHmac('sha256', secret).update(body).digest('base64url');
     if (sig !== expected) throw new BusinessRuleViolationException('Estado OAuth inválido.');
     return JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as OAuthStatePayload;
+  }
+
+  private extractError(err: unknown): string {
+    if (axios.isAxiosError(err)) {
+      return (
+        err.response?.data?.error_description ??
+        err.response?.data?.error?.message ??
+        err.response?.status?.toString() ??
+        err.message
+      );
+    }
+    return err instanceof Error ? err.message : String(err);
   }
 }
