@@ -19,13 +19,45 @@ export class SyncSpotifyQueueUseCase {
     private readonly spotify: SpotifyService,
   ) {}
 
-  /** Refleja en Spotify la cola Bartender (sonando + aprobadas). */
+  /** Refleja en Spotify la cola Bartender (sonando + aprobadas), sin duplicar. */
   async execute(businessId: string): Promise<{ trackCount: number }> {
     const business = await this.businesses.findById(businessId);
     if (!business || business.musicProvider !== MusicProvider.SPOTIFY) {
       return { trackCount: 0 };
     }
 
+    const trackIds = await this.buildTargetTrackIds(businessId);
+    if (!trackIds.length) return { trackCount: 0 };
+
+    await this.spotify.syncPlaybackQueue(businessId, trackIds);
+    return { trackCount: trackIds.length };
+  }
+
+  /** Tras aprobar: encola solo la pista nueva si falta en Spotify. */
+  async syncAfterApprove(
+    businessId: string,
+    spotifyId: string | null,
+  ): Promise<{ trackCount: number }> {
+    if (!spotifyId) return { trackCount: 0 };
+    const business = await this.businesses.findById(businessId);
+    if (!business || business.musicProvider !== MusicProvider.SPOTIFY) {
+      return { trackCount: 0 };
+    }
+
+    if (await this.spotify.isTrackInSpotifyQueue(businessId, spotifyId)) {
+      return { trackCount: 0 };
+    }
+
+    const activeId = await this.spotify.getActiveTrackId(businessId);
+    if (!activeId) {
+      return this.execute(businessId);
+    }
+
+    await this.spotify.addToQueue(businessId, spotifyId);
+    return { trackCount: 1 };
+  }
+
+  private async buildTargetTrackIds(businessId: string): Promise<string[]> {
     const [playing, approved] = await Promise.all([
       this.requests.findNowPlaying(businessId),
       this.requests.findByBusinessAndStatuses(businessId, [MusicRequestStatus.APPROVED]),
@@ -39,37 +71,6 @@ export class SyncSpotifyQueueUseCase {
     if (playing?.spotifyId) pushId(playing.spotifyId);
     for (const row of approved) pushId(row.spotifyId);
 
-    if (!trackIds.length) return { trackCount: 0 };
-
-    await this.spotify.syncPlaybackQueue(businessId, trackIds);
-    return { trackCount: trackIds.length };
-  }
-
-  /**
-   * Tras aprobar: encola en Spotify la pista nueva.
-   * Si el reproductor Bartender ya está activo → addToQueue (sin duplicar toda la cola).
-   * Si no hay sesión activa → sincroniza sonando + aprobadas.
-   */
-  async syncAfterApprove(
-    businessId: string,
-    spotifyId: string | null,
-  ): Promise<{ trackCount: number }> {
-    if (!spotifyId) return { trackCount: 0 };
-    const business = await this.businesses.findById(businessId);
-    if (!business || business.musicProvider !== MusicProvider.SPOTIFY) {
-      return { trackCount: 0 };
-    }
-
-    try {
-      const activeId = await this.spotify.getActiveTrackId(businessId);
-      if (activeId) {
-        await this.spotify.addToQueue(businessId, spotifyId);
-        return { trackCount: 1 };
-      }
-    } catch {
-      /* Sin dispositivo activo: reconstruir cola completa abajo. */
-    }
-
-    return this.execute(businessId);
+    return trackIds;
   }
 }
