@@ -88,6 +88,9 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 let advancing = false;
 let advanceTimer: ReturnType<typeof setTimeout> | null = null;
 let lastTrackUri = '';
+/** Evita playNext espurio al reconectar (F5) antes de estabilizar el estado. */
+let canAutoAdvance = false;
+let reconnectGraceTimer: ReturnType<typeof setTimeout> | null = null;
 
 const statusLabel = computed(() => {
   if (connecting.value) return 'Conectando…';
@@ -117,8 +120,17 @@ async function registerDevice(id: string) {
   lastSync.value = new Date().toLocaleTimeString();
 }
 
+function beginReconnectGrace() {
+  canAutoAdvance = false;
+  if (reconnectGraceTimer) clearTimeout(reconnectGraceTimer);
+  reconnectGraceTimer = setTimeout(() => {
+    reconnectGraceTimer = null;
+    canAutoAdvance = true;
+  }, 4000);
+}
+
 async function advanceQueue() {
-  if (advancing) return;
+  if (advancing || !canAutoAdvance) return;
   const hasQueue = music.queue.length > 0 || music.nowPlaying;
   if (!hasQueue) return;
 
@@ -138,6 +150,7 @@ async function advanceQueue() {
 }
 
 function scheduleAdvanceOnEnd() {
+  if (!canAutoAdvance) return;
   if (advanceTimer) clearTimeout(advanceTimer);
   advanceTimer = setTimeout(() => {
     advanceTimer = null;
@@ -162,7 +175,7 @@ function handlePlayerState(state: unknown) {
   } | null;
 
   if (!s?.track_window?.current_track) {
-    if (lastTrackUri) scheduleAdvanceOnEnd();
+    if (lastTrackUri && canAutoAdvance) scheduleAdvanceOnEnd();
     currentTrack.value = null;
     isPlaying.value = false;
     lastTrackUri = '';
@@ -182,7 +195,7 @@ function handlePlayerState(state: unknown) {
 
   const duration = s.duration ?? 0;
   const position = s.position ?? 0;
-  if (duration > 0 && position > 0 && position >= duration - 1500) {
+  if (canAutoAdvance && duration > 0 && position > 0 && position >= duration - 1500) {
     scheduleAdvanceOnEnd();
   }
 
@@ -196,6 +209,7 @@ function handlePlayerState(state: unknown) {
 async function reconnect() {
   connecting.value = true;
   error.value = '';
+  beginReconnectGrace();
   try {
     player?.disconnect();
     const result = await createSpotifyPlayer({
@@ -246,6 +260,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   if (pollTimer) clearInterval(pollTimer);
   if (advanceTimer) clearTimeout(advanceTimer);
+  if (reconnectGraceTimer) clearTimeout(reconnectGraceTimer);
   player?.disconnect();
 });
 </script>
