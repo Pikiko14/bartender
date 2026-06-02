@@ -183,6 +183,10 @@ export class SpotifyService {
 
   /** Añade una pista al final de la cola del reproductor Spotify activo. */
   async addToQueue(businessId: string, trackId: string): Promise<void> {
+    if (await this.isTrackInSpotifyQueue(businessId, trackId)) {
+      this.logger.log(`[Spotify] addToQueue skip duplicate business=${businessId} track=${trackId}`);
+      return;
+    }
     const business = await this.requireSpotifyDevice(businessId);
     const { token } = await this.tokens.getValidAccessToken(businessId);
     const deviceId = business.spotifyDeviceId!;
@@ -196,12 +200,19 @@ export class SpotifyService {
     this.logger.log(`[Spotify] addToQueue business=${businessId} track=${trackId}`);
   }
 
+  /** true si la pista ya suena o está en la cola de Spotify. */
+  async isTrackInSpotifyQueue(businessId: string, trackId: string): Promise<boolean> {
+    const snap = await this.getSpotifyQueueSnapshot(businessId);
+    if (snap.currentId === trackId) return true;
+    return snap.queuedIds.includes(trackId);
+  }
+
   /**
    * Alinea la cola del reproductor Spotify con la lista de IDs (orden Bartender).
-   * Si la pista actual coincide con la primera, encola el resto; si no, reinicia con todas.
+   * Solo encola pistas que aún no están sonando ni en la fila de Spotify.
    */
   async syncPlaybackQueue(businessId: string, trackIds: string[]): Promise<void> {
-    const ids = trackIds.filter(Boolean);
+    const ids = [...new Set(trackIds.filter(Boolean))];
     if (!ids.length) return;
 
     const business = await this.requireSpotifyDevice(businessId);
@@ -209,8 +220,8 @@ export class SpotifyService {
     const deviceId = business.spotifyDeviceId!;
     const uris = ids.map((id) => `spotify:track:${id}`);
 
-    const playback = await this.getCurrentPlayback(businessId);
-    const currentId = this.extractPlayingTrackId(playback);
+    const snapshot = await this.getSpotifyQueueSnapshot(businessId);
+    const currentId = snapshot.currentId;
 
     if (!currentId) {
       await this.apiRequest(
@@ -225,11 +236,17 @@ export class SpotifyService {
     }
 
     if (currentId === ids[0]) {
+      const present = new Set<string>([currentId, ...snapshot.queuedIds]);
+      let added = 0;
       for (let i = 1; i < ids.length; i++) {
-        await this.addToQueue(businessId, ids[i]!);
+        const id = ids[i]!;
+        if (present.has(id)) continue;
+        await this.addToQueue(businessId, id);
+        present.add(id);
+        added++;
       }
       this.logger.log(
-        `[Spotify] syncQueue append business=${businessId} added=${Math.max(0, ids.length - 1)}`,
+        `[Spotify] syncQueue append business=${businessId} added=${added} total=${ids.length}`,
       );
       return;
     }
@@ -244,11 +261,53 @@ export class SpotifyService {
     this.logger.log(`[Spotify] syncQueue reset business=${businessId} tracks=${ids.length}`);
   }
 
+  async getSpotifyQueueSnapshot(
+    businessId: string,
+  ): Promise<{ currentId: string | null; queuedIds: string[] }> {
+    const playback = await this.getCurrentPlayback(businessId);
+    const currentId = this.extractPlayingTrackId(playback);
+
+    try {
+      const { token } = await this.tokens.getValidAccessToken(businessId);
+      const queuedIds = await this.fetchPlayerQueueTrackIds(businessId, token);
+      return { currentId, queuedIds };
+    } catch {
+      return { currentId, queuedIds: [] };
+    }
+  }
+
+  private async fetchPlayerQueueTrackIds(businessId: string, token: string): Promise<string[]> {
+    const url = `${this.apiBase}/me/player/queue`;
+    try {
+      const { data, status } = await axios.request<{ queue?: Array<{ id?: string }> }>({
+        method: 'GET',
+        url,
+        headers: { Authorization: `Bearer ${token}` },
+        validateStatus: (s) => s < 500,
+      });
+      if (status === 401) {
+        const refreshed = await this.tokens.getValidAccessToken(businessId);
+        return this.fetchPlayerQueueTrackIds(businessId, refreshed.token);
+      }
+      if (status === 404 || status === 204) return [];
+      if (status >= 400) return [];
+      return (data.queue ?? [])
+        .map((t) => this.normalizeTrackId(t.id))
+        .filter((id): id is string => !!id);
+    } catch {
+      return [];
+    }
+  }
+
+  private normalizeTrackId(id: string | undefined | null): string | null {
+    if (!id) return null;
+    return id.includes(':') ? id.split(':').pop()! : id;
+  }
+
   private extractPlayingTrackId(playback: Record<string, unknown> | null): string | null {
     if (!playback) return null;
     const item = playback.item as { id?: string } | undefined;
-    if (!item?.id) return null;
-    return item.id.includes(':') ? item.id.split(':').pop()! : item.id;
+    return this.normalizeTrackId(item?.id ?? null);
   }
 
   async pause(businessId: string): Promise<void> {
