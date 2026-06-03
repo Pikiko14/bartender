@@ -98,7 +98,6 @@ function billForTable(tableId: string) {
 
 async function loadOpenBills() {
   openBills.value = await ordersApi.openTableBills().catch(() => []);
-  console.log(openBills.value)
 }
 
 async function loadQr(list: TableEntity[]) {
