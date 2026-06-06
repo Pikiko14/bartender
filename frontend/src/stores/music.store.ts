@@ -50,10 +50,39 @@ export const useMusicStore = defineStore('music', {
       this.broadcastIfBound();
       return q;
     },
+    async enqueue(body: {
+      title: string;
+      youtubeId?: string;
+      spotifyId?: string;
+      thumbnail?: string;
+      channelTitle?: string;
+      artist?: string;
+      album?: string;
+      durationSeconds?: number;
+    }) {
+      const q = await musicApi.enqueue(body);
+      this.applyQueue(q);
+      this.broadcastIfBound();
+      return q;
+    },
+    async enqueuePlaylist(playlistId: string, playNow = false) {
+      const result = await musicApi.enqueuePlaylist({ playlistId, playNow });
+      this.applyQueue(result.queue);
+      this.broadcastIfBound();
+      if (playNow) notifyMusicPlaybackChanged();
+      return result;
+    },
     async reject(id: string) {
       const q = await musicApi.reject(id);
       this.applyQueue(q);
       this.broadcastIfBound();
+      return q;
+    },
+    async removeFromQueue(id: string) {
+      const q = await musicApi.removeFromQueue(id);
+      this.applyQueue(q);
+      this.broadcastIfBound();
+      notifyMusicPlaybackChanged();
       return q;
     },
     async playNext() {

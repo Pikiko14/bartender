@@ -129,8 +129,23 @@ export const customersApi = {
 // ---- Music (staff) ----
 export const musicApi = {
   queue: () => unwrap<MusicQueue>(http.get('/music/queue')),
+  enqueue: (body: {
+    title: string;
+    youtubeId?: string;
+    spotifyId?: string;
+    thumbnail?: string;
+    channelTitle?: string;
+    artist?: string;
+    album?: string;
+    durationSeconds?: number;
+  }) => unwrap<MusicQueue>(http.post('/music/requests', body)),
+  enqueuePlaylist: (body: { playlistId: string; playNow?: boolean }) =>
+    unwrap<{ queue: MusicQueue; addedCount: number; firstRequestId: string | null }>(
+      http.post('/music/playlists/enqueue', body),
+    ),
   approve: (id: string) => unwrap<MusicQueue>(http.patch(`/music/requests/${id}/approve`, {})),
   reject: (id: string) => unwrap<MusicQueue>(http.patch(`/music/requests/${id}/reject`, {})),
+  removeFromQueue: (id: string) => unwrap<MusicQueue>(http.delete(`/music/requests/${id}/queue`)),
   setPriority: (id: string, priority: number) =>
     unwrap<MusicRequest>(http.patch(`/music/requests/${id}/priority`, { priority })),
   playNext: () => unwrap<MusicRequest | null>(http.post('/music/play-next', {})),
@@ -181,6 +196,10 @@ export const publicApi = {
   searchMusic: (q: string, businessSlug?: string) =>
     unwrap<YoutubeVideo[]>(
       http.get('/public/music/search', { params: { q, businessSlug: businessSlug || undefined } }),
+    ),
+  searchPlaylists: (q: string) =>
+    unwrap<import('@/shared/types').YoutubePlaylist[]>(
+      http.get('/public/music/playlists/search', { params: { q } }),
     ),
   musicEmbeddable: (videoId: string) =>
     unwrap<{ embeddable: boolean }>(http.get(`/public/music/videos/${videoId}/embeddable`)),

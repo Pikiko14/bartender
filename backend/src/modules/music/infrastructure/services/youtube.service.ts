@@ -11,11 +11,40 @@ export interface YoutubeVideo {
   durationSeconds: number | null;
 }
 
+export interface YoutubePlaylist {
+  playlistId: string;
+  title: string;
+  channelTitle: string;
+  thumbnail: string;
+  itemCount: number | null;
+}
+
 interface YoutubeSearchResponse {
   items: Array<{
-    id: { videoId: string };
+    id: { videoId?: string; playlistId?: string };
     snippet: { title: string; channelTitle: string; thumbnails: { medium?: { url: string } } };
   }>;
+}
+
+interface YoutubePlaylistsResponse {
+  items?: Array<{
+    id: string;
+    contentDetails?: { itemCount?: number };
+    snippet?: { title: string; channelTitle: string; thumbnails: { medium?: { url: string } } };
+  }>;
+}
+
+interface YoutubePlaylistItemsResponse {
+  items?: Array<{
+    snippet: {
+      title: string;
+      channelTitle: string;
+      thumbnails: { medium?: { url: string } };
+      resourceId?: { videoId?: string };
+    };
+    contentDetails?: { videoId?: string };
+  }>;
+  nextPageToken?: string;
 }
 
 interface YoutubeVideosResponse {
@@ -66,7 +95,7 @@ export class YoutubeService {
       return data.items
         .filter((i) => i.id?.videoId)
         .map((i) => ({
-          youtubeId: i.id.videoId,
+          youtubeId: i.id.videoId!,
           title: i.snippet.title,
           channelTitle: i.snippet.channelTitle,
           thumbnail: i.snippet.thumbnails?.medium?.url ?? '',
@@ -75,6 +104,133 @@ export class YoutubeService {
     } catch (error) {
       if (error instanceof BusinessRuleViolationException) throw error;
       this.logger.error(`Error consultando YouTube: ${(error as Error).message}`);
+      throw new HttpException('No se pudo consultar YouTube.', 502);
+    }
+  }
+
+  parsePlaylistId(input: string): string | null {
+    const trimmed = input.trim();
+    const urlMatch = trimmed.match(/[?&]list=([a-zA-Z0-9_-]+)/);
+    if (urlMatch) return urlMatch[1];
+    if (/^PL[\w-]{10,}$/i.test(trimmed)) return trimmed;
+    return null;
+  }
+
+  async searchPlaylists(query: string, maxResults = 10): Promise<YoutubePlaylist[]> {
+    const directId = this.parsePlaylistId(query);
+    if (directId) {
+      const playlist = await this.getPlaylist(directId);
+      return playlist ? [playlist] : [];
+    }
+
+    try {
+      const { data } = await axios.get<YoutubeSearchResponse>(`${this.base}/search`, {
+        params: {
+          key: this.apiKey,
+          q: query,
+          part: 'snippet',
+          type: 'playlist',
+          maxResults,
+          safeSearch: 'moderate',
+        },
+        timeout: 8000,
+      });
+
+      const ids = data.items
+        .map((i) => i.id?.playlistId)
+        .filter((id): id is string => Boolean(id));
+
+      if (!ids.length) return [];
+
+      return this.fetchPlaylistsByIds(ids);
+    } catch (error) {
+      if (error instanceof BusinessRuleViolationException) throw error;
+      this.logger.error(`Error buscando listas YouTube: ${(error as Error).message}`);
+      throw new HttpException('No se pudo consultar YouTube.', 502);
+    }
+  }
+
+  async getPlaylist(playlistId: string): Promise<YoutubePlaylist | null> {
+    const rows = await this.fetchPlaylistsByIds([playlistId]);
+    return rows[0] ?? null;
+  }
+
+  async getPlaylistVideos(playlistId: string, maxItems = 50): Promise<YoutubeVideo[]> {
+    const videos: YoutubeVideo[] = [];
+    let pageToken: string | undefined;
+
+    try {
+      while (videos.length < maxItems) {
+        const pageSize = Math.min(50, maxItems - videos.length);
+        const { data } = await axios.get<YoutubePlaylistItemsResponse>(
+          `${this.base}/playlistItems`,
+          {
+            params: {
+              key: this.apiKey,
+              playlistId,
+              part: 'snippet,contentDetails',
+              maxResults: pageSize,
+              pageToken,
+            },
+            timeout: 8000,
+          },
+        );
+
+        for (const item of data.items ?? []) {
+          const youtubeId =
+            item.contentDetails?.videoId ?? item.snippet.resourceId?.videoId ?? null;
+          if (!youtubeId || youtubeId === 'deleted') continue;
+          videos.push({
+            youtubeId,
+            title: item.snippet.title,
+            channelTitle: item.snippet.channelTitle,
+            thumbnail: item.snippet.thumbnails?.medium?.url ?? '',
+            durationSeconds: null,
+          });
+        }
+
+        if (!data.nextPageToken || videos.length >= maxItems) break;
+        pageToken = data.nextPageToken;
+      }
+
+      return videos;
+    } catch (error) {
+      if (error instanceof BusinessRuleViolationException) throw error;
+      this.logger.error(`Error leyendo lista YouTube: ${(error as Error).message}`);
+      throw new HttpException('No se pudo leer la lista de YouTube.', 502);
+    }
+  }
+
+  private async fetchPlaylistsByIds(ids: string[]): Promise<YoutubePlaylist[]> {
+    if (!ids.length) return [];
+
+    try {
+      const { data } = await axios.get<YoutubePlaylistsResponse>(`${this.base}/playlists`, {
+        params: {
+          key: this.apiKey,
+          part: 'snippet,contentDetails',
+          id: ids.join(','),
+        },
+        timeout: 8000,
+      });
+
+      const byId = new Map(
+        (data.items ?? []).map((item) => [
+          item.id,
+          {
+            playlistId: item.id,
+            title: item.snippet?.title ?? 'Lista sin título',
+            channelTitle: item.snippet?.channelTitle ?? '',
+            thumbnail: item.snippet?.thumbnails?.medium?.url ?? '',
+            itemCount: item.contentDetails?.itemCount ?? null,
+          } satisfies YoutubePlaylist,
+        ]),
+      );
+
+      return ids.map((id) => byId.get(id)).filter((p): p is YoutubePlaylist => Boolean(p));
+    } catch (error) {
+      if (error instanceof BusinessRuleViolationException) throw error;
+      this.logger.error(`Error consultando listas YouTube: ${(error as Error).message}`);
       throw new HttpException('No se pudo consultar YouTube.', 502);
     }
   }

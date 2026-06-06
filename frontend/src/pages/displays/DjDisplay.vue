@@ -514,12 +514,22 @@ async function advanceQueueFromBackend() {
 }
 
 async function onTrackEnded(finished: YoutubePlayerTrack) {
-  const advancedLocally =
+  const backendTrack = toTrack(music.nowPlaying);
+
+  // El backend ya avanzó (Siguiente/Saltar/admin) — no llamar playNext otra vez.
+  if (backendTrack && backendTrack.id !== finished.id) {
+    liveTrack.value = backendTrack;
+    await applyTrackToPlayer(music.nowPlaying, { force: true });
+    return;
+  }
+
+  const locallyAdvanced =
     liveTrack.value != null &&
     liveTrack.value.id !== finished.id &&
-    music.queue.some((q) => q.id === liveTrack.value!.id);
+    (liveTrack.value.id === music.nowPlaying?.id ||
+      music.queue.some((q) => q.id === liveTrack.value!.id));
 
-  if (advancedLocally) {
+  if (locallyAdvanced) {
     if (playerSyncBackend.value) scheduleBackendSync();
     return;
   }
@@ -533,6 +543,11 @@ async function onTrackEnded(finished: YoutubePlayerTrack) {
 
 /** Si el reproductor se quedó sin “siguiente” local, intenta sacar otra de la cola en BD. */
 async function onQueueEmpty() {
+  if (music.nowPlaying?.youtubeId) {
+    liveTrack.value = toTrack(music.nowPlaying);
+    await applyTrackToPlayer(music.nowPlaying, { force: true });
+    return;
+  }
   if (music.queue.length) {
     try {
       await advanceQueueFromBackend();

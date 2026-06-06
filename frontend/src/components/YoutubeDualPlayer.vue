@@ -412,6 +412,14 @@ function isVideoShowingTrack(track: YoutubePlayerTrack, slot: Slot = displaySlot
   return onAir === expected || onAir === track.youtubeId;
 }
 
+function isDisplayShowingTrack(track: YoutubePlayerTrack | null | undefined): boolean {
+  if (!track?.youtubeId) return false;
+  const onAir = getVideoId(displaySlot.value);
+  if (!onAir) return false;
+  const expected = resolvedYoutubeId(track);
+  return onAir === expected || onAir === track.youtubeId;
+}
+
 function isTrackActiveOnPlayer(track: YoutubePlayerTrack): boolean {
   if (swapping.value || !track.youtubeId) return false;
   if (activeTrackId.value !== track.id) return false;
@@ -771,6 +779,7 @@ async function initPlayers() {
       prevActivePlayerState.value = event.data;
 
       if (event.data === YT_PLAYER_STATE.ENDED && !swapping.value && isDisplayed) {
+        if (!isDisplayShowingTrack(props.currentTrack)) return;
         void handleEndedFallback();
       }
       if (event.data === YT_PLAYER_STATE.PLAYING) {
@@ -1283,6 +1292,8 @@ async function performEarlySwap(options: { emitSync?: boolean } = {}) {
   const finished = props.currentTrack;
   const next = props.nextTrack;
 
+  if (!isDisplayShowingTrack(finished)) return;
+
   if (!next) {
     await finishCurrentTrack(emitSync);
     return;
@@ -1503,6 +1514,13 @@ defineExpose({
   whenReady,
   refreshLayout,
 });
+
+watch(
+  () => props.currentTrack?.id,
+  (id, prev) => {
+    if (id && id !== prev) swappedTrackId.value = null;
+  },
+);
 
 watch(
   () => `${props.currentTrack?.id ?? ''}:${props.currentTrack?.youtubeId ?? ''}`,

@@ -33,6 +33,12 @@ export class PublicMusicController {
   ) {}
 
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Get('playlists/search')
+  searchPlaylists(@Query() dto: SearchMusicDto) {
+    return this.youtube.searchPlaylists(dto.q);
+  }
+
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('search')
   async search(@Query() dto: SearchMusicDto) {
     if (dto.businessSlug) {

@@ -134,6 +134,14 @@ export interface YoutubeVideo {
   durationSeconds: number | null;
 }
 
+export interface YoutubePlaylist {
+  playlistId: string;
+  title: string;
+  channelTitle: string;
+  thumbnail: string;
+  itemCount: number | null;
+}
+
 export interface GuestSession {
   sessionId: string;
   businessId: string;

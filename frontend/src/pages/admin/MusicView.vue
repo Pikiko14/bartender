@@ -60,6 +60,147 @@
       </RouterLink>
     </div>
 
+    <div class="card mt-6 p-5">
+      <h2 class="font-semibold">Buscar y añadir canciones</h2>
+      <p class="mt-1 text-sm text-slate-400">
+        Encola directamente sin pasar por aprobación (staff / DJ).
+      </p>
+
+      <div v-if="!isSpotifyProvider" class="mt-3 flex gap-2">
+        <button
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-sm transition"
+          :class="searchMode === 'songs' ? 'bg-neon-cyan/20 text-neon-cyan' : 'bg-ink-800 text-slate-400'"
+          @click="searchMode = 'songs'"
+        >
+          Canciones
+        </button>
+        <button
+          type="button"
+          class="rounded-lg px-3 py-1.5 text-sm transition"
+          :class="searchMode === 'playlists' ? 'bg-neon-cyan/20 text-neon-cyan' : 'bg-ink-800 text-slate-400'"
+          @click="searchMode = 'playlists'"
+        >
+          Listas YouTube
+        </button>
+      </div>
+
+      <form class="mt-3 flex gap-2" @submit.prevent="searchSongs">
+        <input
+          v-model="musicQuery"
+          class="input flex-1"
+          :placeholder="
+            searchMode === 'playlists' && !isSpotifyProvider
+              ? 'Nombre de lista o URL de YouTube…'
+              : 'Artista, canción…'
+          "
+          autocomplete="off"
+        />
+        <button type="submit" class="btn-cyan shrink-0 text-sm" :disabled="searching">
+          {{ searching ? '…' : 'Buscar' }}
+        </button>
+      </form>
+
+      <div v-if="youtubeResults.length && searchMode === 'songs'" class="mt-4 max-h-72 space-y-2 overflow-y-auto">
+        <div
+          v-for="v in youtubeResults"
+          :key="v.youtubeId"
+          class="flex items-center gap-3 rounded-lg bg-ink-800 p-2"
+        >
+          <img :src="v.thumbnail" class="h-10 w-16 shrink-0 rounded object-cover" alt="" />
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm">{{ v.title }}</p>
+            <p class="truncate text-xs text-slate-500">{{ v.channelTitle }}</p>
+          </div>
+          <button
+            type="button"
+            class="btn-primary shrink-0 px-3 py-1.5 text-xs"
+            :disabled="addingId === v.youtubeId"
+            @click="enqueueYoutube(v)"
+          >
+            {{ addingId === v.youtubeId ? '…' : '+ Cola' }}
+          </button>
+        </div>
+      </div>
+
+      <div
+        v-if="playlistResults.length && searchMode === 'playlists'"
+        class="mt-4 max-h-72 space-y-2 overflow-y-auto"
+      >
+        <div
+          v-for="p in playlistResults"
+          :key="p.playlistId"
+          class="flex items-center gap-3 rounded-lg bg-ink-800 p-2"
+        >
+          <img :src="p.thumbnail" class="h-10 w-10 shrink-0 rounded object-cover" alt="" />
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm">{{ p.title }}</p>
+            <p class="truncate text-xs text-slate-500">
+              {{ p.channelTitle }}
+              <span v-if="p.itemCount != null"> · {{ p.itemCount }} canciones</span>
+            </p>
+          </div>
+          <div class="flex shrink-0 gap-1">
+            <button
+              type="button"
+              class="btn-primary px-2 py-1.5 text-xs"
+              :disabled="addingId === p.playlistId"
+              @click="enqueuePlaylist(p, false)"
+            >
+              {{ addingId === p.playlistId ? '…' : '+ Cola' }}
+            </button>
+            <button
+              type="button"
+              class="btn-cyan px-2 py-1.5 text-xs"
+              :disabled="addingId === `${p.playlistId}:play`"
+              @click="enqueuePlaylist(p, true)"
+            >
+              {{ addingId === `${p.playlistId}:play` ? '…' : '▶ Reproducir' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="spotifyResults.length" class="mt-4 max-h-72 space-y-2 overflow-y-auto">
+        <div
+          v-for="t in spotifyResults"
+          :key="t.id"
+          class="flex items-center gap-3 rounded-lg bg-ink-800 p-2"
+        >
+          <img
+            :src="t.imageUrl ?? ''"
+            class="h-10 w-10 shrink-0 rounded object-cover"
+            alt=""
+          />
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm">{{ t.title }}</p>
+            <p class="truncate text-xs text-slate-500">{{ t.artist }}</p>
+          </div>
+          <button
+            type="button"
+            class="btn-primary shrink-0 px-3 py-1.5 text-xs"
+            :disabled="addingId === t.id"
+            @click="enqueueSpotify(t)"
+          >
+            {{ addingId === t.id ? '…' : '+ Cola' }}
+          </button>
+        </div>
+      </div>
+
+      <p
+        v-else-if="
+          searchedOnce &&
+          !searching &&
+          !youtubeResults.length &&
+          !spotifyResults.length &&
+          !playlistResults.length
+        "
+        class="mt-4 text-sm text-slate-500"
+      >
+        Sin resultados para «{{ musicQuery.trim() }}».
+      </p>
+    </div>
+
     <div class="mt-6 grid gap-6 lg:grid-cols-3">
       <div class="card p-5 lg:col-span-2">
         <h2 class="font-semibold">Cola aprobada ({{ music.queue.length }})</h2>
@@ -97,6 +238,14 @@
               @click="nextTrack"
             >
               ▶ Siguiente
+            </button>
+            <button
+              type="button"
+              class="btn-ghost ml-auto text-sm text-red-400"
+              :disabled="removingId === music.nowPlaying?.id"
+              @click="removeFromQueue(music.nowPlaying!.id)"
+            >
+              {{ removingId === music.nowPlaying?.id ? '…' : '✕ Quitar' }}
             </button>
           </div>
         </div>
@@ -164,6 +313,15 @@
             >
               {{ playingId === s.id ? '…' : '▶ Ahora' }}
             </button>
+            <button
+              type="button"
+              class="btn-ghost shrink-0 px-2 py-1 text-xs text-red-400"
+              :disabled="removingId === s.id"
+              title="Quitar de la cola"
+              @click="removeFromQueue(s.id)"
+            >
+              {{ removingId === s.id ? '…' : '✕' }}
+            </button>
           </li>
           <li
             v-if="!music.nowPlaying && !spotifyLive && !music.queue.length"
@@ -209,8 +367,10 @@ import { useBusinessStore } from '@/stores/business.store';
 import { apiErrorMessage } from '@/services/http';
 import { useToast } from '@/composables/useToast';
 import { useMusicProviderStatus } from '@/composables/useMusicProviderStatus';
-import { spotifyApi } from '@/services/api';
+import { spotifyApi, publicApi } from '@/services/api';
 import { djShareUrl } from '@/shared/dj-share';
+import type { SpotifyTrack } from '@/shared/spotify.types';
+import type { YoutubePlaylist, YoutubeVideo } from '@/shared/types';
 import { onMusicSyncBroadcast } from '@/shared/music-sync-bus';
 import { onPlaybackSync } from '@/shared/playback-sync';
 import { parseSpotifyPlayback, type SpotifyPlaybackSnapshot } from '@/shared/spotify-playback';
@@ -224,6 +384,15 @@ const playingId = ref<string | null>(null);
 const isPlaying = ref(true);
 const busy = ref(false);
 const spotifyLive = ref<SpotifyPlaybackSnapshot | null>(null);
+const musicQuery = ref('');
+const searchMode = ref<'songs' | 'playlists'>('songs');
+const searching = ref(false);
+const searchedOnce = ref(false);
+const youtubeResults = ref<YoutubeVideo[]>([]);
+const spotifyResults = ref<SpotifyTrack[]>([]);
+const playlistResults = ref<YoutubePlaylist[]>([]);
+const addingId = ref<string | null>(null);
+const removingId = ref<string | null>(null);
 let unregPlaybackSync: (() => void) | undefined;
 let unregMusicSync: (() => void) | undefined;
 let spotifyPollTimer: ReturnType<typeof setInterval> | undefined;
@@ -424,6 +593,110 @@ async function reject(id: string) {
     toast.success('Canción rechazada.');
   } catch (e) {
     toast.error(apiErrorMessage(e));
+  }
+}
+
+async function removeFromQueue(id: string) {
+  if (removingId.value) return;
+  removingId.value = id;
+  try {
+    await music.removeFromQueue(id);
+    toast.success('Canción quitada de la cola.');
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
+  } finally {
+    removingId.value = null;
+  }
+}
+
+async function searchSongs() {
+  const q = musicQuery.value.trim();
+  if (!q) return;
+  searching.value = true;
+  searchedOnce.value = true;
+  try {
+    if (isSpotifyProvider.value) {
+      youtubeResults.value = [];
+      playlistResults.value = [];
+      spotifyResults.value = await spotifyApi.search(q);
+    } else if (searchMode.value === 'playlists') {
+      youtubeResults.value = [];
+      spotifyResults.value = [];
+      playlistResults.value = await publicApi.searchPlaylists(q);
+    } else {
+      spotifyResults.value = [];
+      playlistResults.value = [];
+      let slug = businessSlug.value;
+      if (!slug && auth.hasRole('OWNER')) {
+        await business.fetchMine().catch(() => undefined);
+        slug = businessSlug.value;
+      }
+      youtubeResults.value = await publicApi.searchMusic(q, slug || undefined);
+    }
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
+  } finally {
+    searching.value = false;
+  }
+}
+
+async function enqueueYoutube(v: YoutubeVideo) {
+  addingId.value = v.youtubeId;
+  try {
+    await music.enqueue({
+      youtubeId: v.youtubeId,
+      title: v.title,
+      thumbnail: v.thumbnail,
+      channelTitle: v.channelTitle,
+      durationSeconds: v.durationSeconds ?? undefined,
+    });
+    toast.success('Añadida a la cola.');
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
+  } finally {
+    addingId.value = null;
+  }
+}
+
+async function enqueueSpotify(t: SpotifyTrack) {
+  addingId.value = t.id;
+  try {
+    await music.enqueue({
+      spotifyId: t.id,
+      title: t.title,
+      artist: t.artist,
+      album: t.album ?? undefined,
+      thumbnail: t.imageUrl ?? undefined,
+      durationSeconds: t.duration ?? undefined,
+    });
+    toast.success(
+      isSpotifyProvider.value
+        ? 'Añadida a la cola · sincronizada con Spotify.'
+        : 'Añadida a la cola.',
+    );
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
+  } finally {
+    addingId.value = null;
+  }
+}
+
+async function enqueuePlaylist(p: YoutubePlaylist, playNow: boolean) {
+  addingId.value = playNow ? `${p.playlistId}:play` : p.playlistId;
+  try {
+    const result = await music.enqueuePlaylist(p.playlistId, playNow);
+    if (playNow) {
+      notifyDjPlayback();
+      toast.success(
+        `${result.addedCount} canciones · reproduciendo «${p.title}».`,
+      );
+    } else {
+      toast.success(`${result.addedCount} canciones añadidas a la cola.`);
+    }
+  } catch (e) {
+    toast.error(apiErrorMessage(e));
+  } finally {
+    addingId.value = null;
   }
 }
 

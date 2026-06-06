@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { EntityNotFoundException, ForbiddenDomainException } from '@core/domain/exceptions';
+import { BusinessRuleViolationException, EntityNotFoundException, ForbiddenDomainException } from '@core/domain/exceptions';
 import { SocketEvents } from '@shared/realtime/socket-events';
 import { RealtimeService } from '@infrastructure/realtime/realtime.service';
-import { MusicRequest } from '../../domain/entities/music-request.entity';
+import { MusicRequest, MusicRequestStatus } from '../../domain/entities/music-request.entity';
 import {
   MUSIC_REQUEST_REPOSITORY,
   MusicRequestRepository,
@@ -47,6 +47,38 @@ export class ModerateMusicUseCase {
     );
     const queue = await this.getQueue.execute(businessId);
     this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_QUEUE_UPDATED, queue);
+    return queue;
+  }
+
+  async removeFromQueue(businessId: string, id: string): Promise<MusicQueueView> {
+    const request = await this.getOwned(businessId, id);
+    const wasPlaying = request.status === MusicRequestStatus.PLAYING;
+
+    if (
+      request.status !== MusicRequestStatus.APPROVED &&
+      request.status !== MusicRequestStatus.PLAYING
+    ) {
+      throw new BusinessRuleViolationException(
+        'Solo se pueden quitar canciones de la cola aprobada o en reproducción.',
+      );
+    }
+
+    if (wasPlaying) request.skip();
+    else request.reject();
+
+    const updated = await this.requests.update(request);
+    if (wasPlaying) {
+      this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_PLAYING, null);
+      this.realtime.emitToBusiness(
+        businessId,
+        SocketEvents.MUSIC_SKIPPED,
+        presentMusicRequest(updated),
+      );
+    }
+
+    const queue = await this.getQueue.execute(businessId);
+    this.realtime.emitToBusiness(businessId, SocketEvents.MUSIC_QUEUE_UPDATED, queue);
+    await this.syncSpotifyQueue.execute(businessId).catch(() => undefined);
     return queue;
   }
 

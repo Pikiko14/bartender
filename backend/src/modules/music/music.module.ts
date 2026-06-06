@@ -8,6 +8,8 @@ import { GetQueueUseCase } from './application/use-cases/get-queue.use-case';
 import { ModerateMusicUseCase } from './application/use-cases/moderate-music.use-case';
 import { PlaybackUseCase } from './application/use-cases/playback.use-case';
 import { RequestSongUseCase } from './application/use-cases/request-song.use-case';
+import { EnqueuePlaylistUseCase } from './application/use-cases/enqueue-playlist.use-case';
+import { EnqueueSongUseCase } from './application/use-cases/enqueue-song.use-case';
 import { ResolveMusicPlaybackUseCase } from './application/use-cases/resolve-music-playback.use-case';
 import { SyncSpotifyQueueUseCase } from './application/use-cases/sync-spotify-queue.use-case';
 import { VoteSongUseCase } from './application/use-cases/vote-song.use-case';
@@ -34,6 +36,8 @@ import { YoutubeService } from './infrastructure/services/youtube.service';
     RequestSongUseCase,
     VoteSongUseCase,
     ModerateMusicUseCase,
+    EnqueueSongUseCase,
+    EnqueuePlaylistUseCase,
     PlaybackUseCase,
     SyncSpotifyQueueUseCase,
     ResolveMusicPlaybackUseCase,

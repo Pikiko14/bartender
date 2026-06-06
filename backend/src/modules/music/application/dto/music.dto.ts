@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 export class SearchMusicDto {
   @IsString()
@@ -64,6 +64,54 @@ export class SetPriorityDto {
   @Min(0)
   @Max(100)
   priority!: number;
+}
+
+export class EnqueueSongDto {
+  @IsString()
+  @MaxLength(200)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  youtubeId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  spotifyId?: string;
+
+  @IsOptional()
+  @IsString()
+  thumbnail?: string;
+
+  @IsOptional()
+  @IsString()
+  channelTitle?: string;
+
+  @IsOptional()
+  @IsString()
+  artist?: string;
+
+  @IsOptional()
+  @IsString()
+  album?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  durationSeconds?: number;
+}
+
+export class EnqueuePlaylistDto {
+  @IsString()
+  @MaxLength(200)
+  playlistId!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  playNow?: boolean;
 }
 
 export class UpdatePlaybackSourceDto {

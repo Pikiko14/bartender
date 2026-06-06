@@ -1,7 +1,9 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { CurrentUser, RequirePermissions } from '@shared/decorators';
 import { Permission } from '@shared/enums';
-import { SetPriorityDto, UpdatePlaybackSourceDto } from '../../application/dto/music.dto';
+import { EnqueuePlaylistDto, EnqueueSongDto, SetPriorityDto, UpdatePlaybackSourceDto } from '../../application/dto/music.dto';
+import { EnqueuePlaylistUseCase } from '../../application/use-cases/enqueue-playlist.use-case';
+import { EnqueueSongUseCase } from '../../application/use-cases/enqueue-song.use-case';
 import { GetQueueUseCase } from '../../application/use-cases/get-queue.use-case';
 import { ModerateMusicUseCase } from '../../application/use-cases/moderate-music.use-case';
 import { PlaybackUseCase } from '../../application/use-cases/playback.use-case';
@@ -12,6 +14,8 @@ export class MusicController {
   constructor(
     private readonly getQueue: GetQueueUseCase,
     private readonly moderate: ModerateMusicUseCase,
+    private readonly enqueue: EnqueueSongUseCase,
+    private readonly enqueuePlaylistUseCase: EnqueuePlaylistUseCase,
     private readonly playback: PlaybackUseCase,
     private readonly resolvePlayback: ResolveMusicPlaybackUseCase,
   ) {}
@@ -20,6 +24,26 @@ export class MusicController {
   @RequirePermissions(Permission.MUSIC_MODERATE)
   queue(@CurrentUser('businessId') businessId: string) {
     return this.getQueue.execute(businessId);
+  }
+
+  @Post('requests')
+  @RequirePermissions(Permission.MUSIC_MODERATE)
+  createRequest(
+    @CurrentUser('businessId') businessId: string,
+    @CurrentUser('userId') staffUserId: string,
+    @Body() dto: EnqueueSongDto,
+  ) {
+    return this.enqueue.execute(businessId, staffUserId, dto);
+  }
+
+  @Post('playlists/enqueue')
+  @RequirePermissions(Permission.MUSIC_MODERATE)
+  enqueuePlaylist(
+    @CurrentUser('businessId') businessId: string,
+    @CurrentUser('userId') staffUserId: string,
+    @Body() dto: EnqueuePlaylistDto,
+  ) {
+    return this.enqueuePlaylistUseCase.execute(businessId, staffUserId, dto);
   }
 
   @Patch('requests/:id/approve')
@@ -32,6 +56,12 @@ export class MusicController {
   @RequirePermissions(Permission.MUSIC_MODERATE)
   reject(@CurrentUser('businessId') businessId: string, @Param('id') id: string) {
     return this.moderate.reject(businessId, id);
+  }
+
+  @Delete('requests/:id/queue')
+  @RequirePermissions(Permission.MUSIC_MODERATE)
+  removeFromQueue(@CurrentUser('businessId') businessId: string, @Param('id') id: string) {
+    return this.moderate.removeFromQueue(businessId, id);
   }
 
   @Patch('requests/:id/priority')
