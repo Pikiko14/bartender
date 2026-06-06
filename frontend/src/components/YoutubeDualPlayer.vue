@@ -1,28 +1,31 @@
 <template>
   <div
+    ref="rootEl"
     class="relative w-full overflow-hidden bg-black"
     :class="fill ? 'h-full rounded-none' : 'aspect-video rounded-xl'"
   >
     <div
-      :id="elementIds.a"
-      class="absolute inset-0 h-full w-full transition-opacity duration-150"
-      :class="
-        activeSlot === 'a'
-          ? 'z-20 opacity-100'
-          : 'z-0 opacity-0 pointer-events-none'
-      "
-      :aria-hidden="activeSlot !== 'a'"
+      v-if="showPoster"
+      class="pointer-events-none absolute inset-0 z-[15] bg-cover bg-center"
+      :style="posterStyle"
+      aria-hidden="true"
     />
+
+    <!-- Slot visible: opacity 100. Slot de precarga (siguiente): invisible pero con tamaño real (px vía rootEl). -->
     <div
-      :id="elementIds.b"
-      class="absolute inset-0 h-full w-full transition-opacity duration-150"
-      :class="
-        activeSlot === 'b'
-          ? 'z-20 opacity-100'
-          : 'z-0 opacity-0 pointer-events-none'
-      "
-      :aria-hidden="activeSlot !== 'b'"
-    />
+      class="absolute inset-0 h-full w-full"
+      :class="displaySlot === 'a' ? 'yt-slot-visible' : 'yt-slot-hidden'"
+      :aria-hidden="displaySlot !== 'a'"
+    >
+      <div :id="elementIds.a" class="relative h-full w-full" />
+    </div>
+    <div
+      class="absolute inset-0 h-full w-full"
+      :class="displaySlot === 'b' ? 'yt-slot-visible' : 'yt-slot-hidden'"
+      :aria-hidden="displaySlot !== 'b'"
+    >
+      <div :id="elementIds.b" class="relative h-full w-full" />
+    </div>
 
     <div
       v-if="showProgress"
@@ -34,10 +37,10 @@
           :style="{ width: `${progressPct}%` }"
         />
       </div>
-      <div class="mt-1.5 flex items-center justify-between text-[11px] text-slate-300">
-        <span>{{ formatTime(elapsedSec) }}</span>
-        <span class="text-slate-400">{{ statusLabel }}</span>
-        <span v-if="remainingSec > 0">-{{ formatTime(remainingSec) }}</span>
+      <div class="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-slate-300">
+        <span class="shrink-0">{{ formatTime(elapsedSec) }}</span>
+        <span class="min-w-0 flex-1 truncate text-center text-slate-400">{{ statusLabel }}</span>
+        <span v-if="remainingSec > 0" class="shrink-0">-{{ formatTime(remainingSec) }}</span>
       </div>
     </div>
 
@@ -151,8 +154,12 @@ type Slot = 'a' | 'b';
 
 const instanceId = `yt-${Math.random().toString(36).slice(2, 9)}`;
 const elementIds = reactive({ a: `${instanceId}-a`, b: `${instanceId}-b` });
+const rootEl = ref<HTMLElement | null>(null);
 
 const activeSlot = ref<Slot>('a');
+/** Slot mostrado al usuario; solo cambia cuando el iframe ya tiene vídeo listo. */
+const displaySlot = ref<Slot>('a');
+const videoFrameVisible = ref(false);
 const playerA = ref<YoutubePlayerInstance | null>(null);
 const playerB = ref<YoutubePlayerInstance | null>(null);
 const ready = ref({ a: false, b: false });
@@ -173,9 +180,13 @@ const resolvingBlocked = ref(false);
 const prefetchingNextId = ref<string | null>(null);
 /** ID de la pista que ya suena en el player activo (evita recargas al cambiar props). */
 const activeTrackId = ref<string | null>(null);
+/** Autoplay con mute inicial (política del navegador en pantallas DJ/TV). */
+const pendingDjUnmute = ref(false);
+let startingCurrentTrack = false;
 
 let tickTimer: ReturnType<typeof setInterval> | null = null;
 let unregPlaybackSync: (() => void) | null = null;
+let resizeObserver: ResizeObserver | null = null;
 let destroyed = false;
 
 const isPlaying = computed(
@@ -188,22 +199,41 @@ const queueEmptySoon = computed(
   () => props.currentTrack && !props.nextTrack && playerState.value === YT_PLAYER_STATE.PLAYING,
 );
 
+const posterYoutubeId = computed(() => {
+  const track = props.currentTrack;
+  if (!track?.youtubeId) return '';
+  const cached = getCachedTrackResolution(track.id);
+  return cached?.ok ? cached.youtubeId : track.youtubeId;
+});
+
+const showPoster = computed(() => {
+  if (!posterYoutubeId.value || fallbackLoading.value || autoplayBlocked.value) return false;
+  if (videoFrameVisible.value) return false;
+  if (swapping.value && slotShowsVideo(displaySlot.value)) return false;
+  return true;
+});
+
+const posterStyle = computed(() => ({
+  backgroundImage: `url(https://img.youtube.com/vi/${posterYoutubeId.value}/hqdefault.jpg)`,
+}));
+
+function nextTrackDisplayTitle(): string {
+  const next = props.nextTrack;
+  if (!next) return '';
+  const resolved = getCachedTrackResolution(next.id);
+  return resolved?.ok ? resolved.title : next.title;
+}
+
 const statusLabel = computed(() => {
   if (swapping.value) return 'Transición DJ…';
-  if (props.nextTrack) {
-    const resolved = getCachedTrackResolution(props.nextTrack.id);
-    const nextYoutubeId = resolved?.ok ? resolved.youtubeId : props.nextTrack.youtubeId;
-    if (preloadedReady.value[inactiveSlot()] === nextYoutubeId) {
-      return '⏭ Siguiente listo';
-    }
-    if (prefetchingNextId.value === props.nextTrack.id) {
-      return '⏭ Preparando siguiente…';
-    }
+  if (!videoFrameVisible.value && props.currentTrack) return 'Cargando vídeo…';
+  const nextTitle = nextTrackDisplayTitle();
+  if (nextTitle) {
+    const nextYid = resolvedNextYoutubeId();
+    const ready = !!nextYid && preloadedReady.value[inactiveSlot()] === nextYid;
+    return ready ? `Siguiente: ${nextTitle} (Listo)` : `Siguiente: ${nextTitle}`;
   }
   if (playerState.value === YT_PLAYER_STATE.BUFFERING) return 'Buffering…';
-  if (playerState.value === YT_PLAYER_STATE.PLAYING) {
-    return activeSlot.value === 'a' ? '▶ Player A' : '▶ Player B';
-  }
   if (playerState.value === YT_PLAYER_STATE.PAUSED) return 'Pausado';
   return '';
 });
@@ -220,6 +250,39 @@ function toPlaybackSource(track: YoutubePlayerTrack) {
 function resolvedYoutubeId(track: YoutubePlayerTrack): string {
   const cached = getCachedTrackResolution(track.id);
   return cached?.ok ? cached.youtubeId : track.youtubeId;
+}
+
+function resolvedNextYoutubeId(): string {
+  const next = props.nextTrack;
+  if (!next?.youtubeId) return '';
+  return resolvedYoutubeId(next);
+}
+
+/** Slot oculto con el siguiente tema en cola (precarga). Nunca debe mostrarse hasta el swap. */
+function isSlotHoldingNextPrefetch(slot: Slot, activatingYoutubeId?: string): boolean {
+  if (swapping.value || !props.nextTrack) return false;
+  const onAir = getVideoId(slot);
+  if (activatingYoutubeId && onAir === activatingYoutubeId) return false;
+  const nextYid = resolvedNextYoutubeId();
+  if (!nextYid) return false;
+  if (slot === displaySlot.value) return false;
+  if (onAir === nextYid) return true;
+  return preloadedReady.value[slot] === nextYid;
+}
+
+function keepPrefetchSlotHidden(slot: Slot) {
+  if (!isSlotHoldingNextPrefetch(slot)) return;
+  try {
+    const player = slotPlayer(slot);
+    if (!player) return;
+    const state = player.getPlayerState();
+    if (state === YT_PLAYER_STATE.PLAYING || state === YT_PLAYER_STATE.BUFFERING) {
+      player.pauseVideo();
+    }
+    player.mute();
+  } catch {
+    /* ignore */
+  }
 }
 
 function isSlotReadyForVideo(slot: Slot, youtubeId: string): boolean {
@@ -253,7 +316,78 @@ function slotPlayer(slot: Slot): YoutubePlayerInstance | null {
 }
 
 function inactiveSlot(): Slot {
-  return activeSlot.value === 'a' ? 'b' : 'a';
+  return displaySlot.value === 'a' ? 'b' : 'a';
+}
+
+function slotShowsVideo(slot: Slot): boolean {
+  try {
+    const id = getVideoId(slot);
+    if (!id || loadedIds.value[slot] !== id) return false;
+    const state = slotPlayer(slot)?.getPlayerState();
+    return (
+      state === YT_PLAYER_STATE.PLAYING ||
+      state === YT_PLAYER_STATE.BUFFERING ||
+      state === YT_PLAYER_STATE.PAUSED
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** Dónde cargar la pista actual: reutilizar precarga si ya tiene ese vídeo. */
+function pickTargetSlot(youtubeId: string): Slot {
+  const existing = findSlotWithVideo(youtubeId, true);
+  if (existing && !isSlotHoldingNextPrefetch(existing, youtubeId)) return existing;
+  if (slotShowsVideo(displaySlot.value)) return inactiveSlot();
+  return displaySlot.value;
+}
+
+async function waitForVisibleFrame(
+  slot: Slot,
+  youtubeId: string,
+  timeoutMs: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (destroyed) return false;
+    if (getVideoId(slot) !== youtubeId) {
+      await new Promise((r) => setTimeout(r, 80));
+      continue;
+    }
+    try {
+      const player = slotPlayer(slot);
+      const state = player?.getPlayerState();
+      refreshPlayerSize(slot);
+      if (state === YT_PLAYER_STATE.PLAYING) {
+        return true;
+      }
+      if (state === YT_PLAYER_STATE.BUFFERING) {
+        const duration = player?.getDuration() ?? 0;
+        if (duration > 0) {
+          return true;
+        }
+      }
+      if (state === YT_PLAYER_STATE.PAUSED) {
+        const duration = player?.getDuration() ?? 0;
+        if (duration > 0) {
+          return true;
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    await new Promise((r) => setTimeout(r, 80));
+  }
+  return false;
+}
+
+function markVideoFrameVisible(slot: Slot) {
+  videoFrameVisible.value = true;
+  refreshVisiblePlayer(slot);
+}
+
+function markVideoFrameHidden() {
+  videoFrameVisible.value = false;
 }
 
 function getVideoId(slot: Slot): string {
@@ -271,46 +405,148 @@ function slotHasLoadedVideo(slot: Slot, youtubeId: string): boolean {
   return preloadedReady.value[slot] === youtubeId;
 }
 
+function isVideoShowingTrack(track: YoutubePlayerTrack, slot: Slot = displaySlot.value): boolean {
+  const expected = resolvedYoutubeId(track);
+  const onAir = getVideoId(slot);
+  if (!onAir) return false;
+  return onAir === expected || onAir === track.youtubeId;
+}
+
 function isTrackActiveOnPlayer(track: YoutubePlayerTrack): boolean {
   if (swapping.value || !track.youtubeId) return false;
   if (activeTrackId.value !== track.id) return false;
+  if (!isVideoShowingTrack(track)) return false;
   try {
-    const slot = activeSlot.value;
-    if (!slotHasLoadedVideo(slot, track.youtubeId)) return false;
-    const state = slotPlayer(slot)?.getPlayerState();
-    return state === YT_PLAYER_STATE.PLAYING || state === YT_PLAYER_STATE.BUFFERING;
+    const state = slotPlayer(displaySlot.value)?.getPlayerState();
+    return (
+      state === YT_PLAYER_STATE.PLAYING ||
+      state === YT_PLAYER_STATE.BUFFERING ||
+      state === YT_PLAYER_STATE.PAUSED
+    );
   } catch {
     return false;
   }
 }
 
-function isPlayingTrack(trackId: string): boolean {
-  if (activeTrackId.value !== trackId) return false;
-  const track = props.currentTrack;
-  if (!track || track.id !== trackId) return false;
+function isPlayingTrack(trackOrId: string | YoutubePlayerTrack): boolean {
+  const track =
+    typeof trackOrId === 'string'
+      ? props.currentTrack?.id === trackOrId
+        ? props.currentTrack
+        : null
+      : trackOrId;
+  if (!track) return false;
   return isTrackActiveOnPlayer(track);
 }
 
 
-function refreshVisiblePlayer(slot: Slot) {
+function getPlayerAreaSize(): { w: number; h: number } {
+  const el = rootEl.value;
+  if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+    return { w: el.clientWidth, h: el.clientHeight };
+  }
+  return { w: 640, h: 360 };
+}
+
+function refreshPlayerSize(slot: Slot) {
   const player = slotPlayer(slot);
   if (!player) return;
   try {
-    const container = document.getElementById(elementIds[slot]);
-    const w = container?.clientWidth ?? 640;
-    const h = container?.clientHeight ?? 360;
+    const { w, h } = getPlayerAreaSize();
     player.setSize?.(w, h);
     const iframe = player.getIframe?.();
     if (iframe) {
-      iframe.style.width = '100%';
-      iframe.style.height = '100%';
       iframe.style.position = 'absolute';
-      iframe.style.inset = '0';
+      iframe.style.left = '0';
+      iframe.style.top = '0';
+      iframe.style.width = `${w}px`;
+      iframe.style.height = `${h}px`;
       iframe.style.border = 'none';
+      iframe.style.display = 'block';
+      iframe.style.maxWidth = 'none';
     }
   } catch {
     /* ignore */
   }
+}
+
+function refreshBothPlayerSizes() {
+  refreshPlayerSize('a');
+  refreshPlayerSize('b');
+}
+
+/** Si el vídeo actual suena en el slot oculto (no precarga), mostrar ese slot. */
+function reconcileDisplaySlotForTrack() {
+  if (swapping.value || !props.currentTrack?.youtubeId) return;
+  const yid = resolvedYoutubeId(props.currentTrack);
+  if (getVideoId(displaySlot.value) === yid && slotShowsVideo(displaySlot.value)) return;
+
+  for (const slot of ['a', 'b'] as Slot[]) {
+    if (isSlotHoldingNextPrefetch(slot)) continue;
+    if (getVideoId(slot) !== yid) continue;
+    const state = slotPlayer(slot)?.getPlayerState();
+    if (
+      state === YT_PLAYER_STATE.PLAYING ||
+      state === YT_PLAYER_STATE.BUFFERING ||
+      state === YT_PLAYER_STATE.PAUSED
+    ) {
+      void showDisplaySlot(slot);
+      return;
+    }
+  }
+}
+
+/** Alias usado en el resto del componente. */
+function refreshVisiblePlayer(slot: Slot) {
+  refreshPlayerSize(slot);
+}
+
+function pauseSlot(slot: Slot) {
+  try {
+    const player = slotPlayer(slot);
+    player?.pauseVideo();
+    player?.mute();
+  } catch {
+    /* ignore */
+  }
+}
+
+async function showDisplaySlot(slot: Slot) {
+  const previous = displaySlot.value;
+  if (previous !== slot) {
+    pauseSlot(previous);
+  }
+
+  displaySlot.value = slot;
+  activeSlot.value = slot;
+  await nextTick();
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+  refreshPlayerSize(slot);
+  try {
+    const player = slotPlayer(slot);
+    if (props.djMode) {
+      if (pendingDjUnmute.value) player?.mute();
+      else {
+        player?.unMute();
+        player?.setVolume?.(100);
+      }
+    } else {
+      player?.unMute();
+      player?.setVolume?.(100);
+    }
+    player?.playVideo();
+  } catch {
+    /* ignore */
+  }
+  refreshPlayerSize(slot);
+  refreshBothPlayerSizes();
+  setTimeout(() => {
+    refreshPlayerSize(slot);
+    reconcileDisplaySlotForTrack();
+  }, 120);
+  setTimeout(() => refreshPlayerSize(slot), 400);
 }
 
 function syncPlayerStateFromSlot(slot: Slot) {
@@ -322,7 +558,7 @@ function syncPlayerStateFromSlot(slot: Slot) {
 }
 
 function updateProgress() {
-  const player = slotPlayer(activeSlot.value);
+  const player = slotPlayer(displaySlot.value);
   if (!player) return;
   try {
     const duration = player.getDuration();
@@ -349,12 +585,12 @@ function broadcastPlaybackState(action: 'play' | 'pause') {
   if (!props.businessId || !props.syncPlayback || suppressPlaybackBroadcast.value || swapping.value) {
     return;
   }
-  const youtubeId = getVideoId(activeSlot.value) || props.currentTrack?.youtubeId;
+  const youtubeId = getVideoId(displaySlot.value) || props.currentTrack?.youtubeId;
   if (!youtubeId) return;
   music.sendPlaybackControl(props.businessId, {
     action,
     youtubeId,
-    at: getCurrentTimeSafe(activeSlot.value),
+    at: getCurrentTimeSafe(displaySlot.value),
   });
 }
 
@@ -363,7 +599,7 @@ function applyRemotePlayback(cmd: PlaybackSyncCommand) {
 
   suppressPlaybackBroadcast.value = true;
   try {
-    const slot = activeSlot.value;
+    const slot = displaySlot.value;
     const player = slotPlayer(slot);
     if (!player) return;
 
@@ -399,7 +635,7 @@ function applyRemotePlayback(cmd: PlaybackSyncCommand) {
 }
 
 function togglePlayPause() {
-  const player = slotPlayer(activeSlot.value);
+  const player = slotPlayer(displaySlot.value);
   if (!player) return;
   try {
     const state = player.getPlayerState();
@@ -461,13 +697,30 @@ async function initPlayers() {
   const makeHandlers = (slot: Slot) => ({
     onReady: () => {
       ready.value[slot] = true;
+      void nextTick().then(() => {
+        refreshBothPlayerSizes();
+        requestAnimationFrame(() => refreshBothPlayerSizes());
+      });
       maybeStart();
     },
     onStateChange: (event: { data: number }) => {
+      if (!swapping.value && isSlotHoldingNextPrefetch(slot)) {
+        if (
+          event.data === YT_PLAYER_STATE.PLAYING ||
+          event.data === YT_PLAYER_STATE.BUFFERING
+        ) {
+          keepPrefetchSlotHidden(slot);
+        }
+        if (event.data === YT_PLAYER_STATE.CUED && getVideoId(slot) === resolvedNextYoutubeId()) {
+          preloadedReady.value[slot] = loadedIds.value[slot];
+        }
+        return;
+      }
+
       // Pausar precarga en player inactivo en cuanto empiece a cargar
       if (
         !swapping.value &&
-        slot !== activeSlot.value &&
+        slot !== displaySlot.value &&
         slot === pauseAfterLoadSlot.value &&
         (event.data === YT_PLAYER_STATE.PLAYING || event.data === YT_PLAYER_STATE.BUFFERING)
       ) {
@@ -482,16 +735,31 @@ async function initPlayers() {
         }
       }
 
-      if (slot !== activeSlot.value) return;
+      if (
+        !swapping.value &&
+        props.currentTrack &&
+        !isSlotHoldingNextPrefetch(slot) &&
+        (event.data === YT_PLAYER_STATE.PLAYING || event.data === YT_PLAYER_STATE.BUFFERING) &&
+        getVideoId(slot) === resolvedYoutubeId(props.currentTrack) &&
+        slot !== displaySlot.value
+      ) {
+        reconcileDisplaySlotForTrack();
+      }
 
+      if (slot !== activeSlot.value && slot !== displaySlot.value) return;
+
+      const isDisplayed = slot === displaySlot.value;
       const prev = prevActivePlayerState.value;
-      playerState.value = event.data;
+      if (isDisplayed) {
+        playerState.value = event.data;
+      }
 
       if (
         !swapping.value &&
         !suppressPlaybackBroadcast.value &&
         props.businessId &&
-        props.syncPlayback
+        props.syncPlayback &&
+        isDisplayed
       ) {
         if (event.data === YT_PLAYER_STATE.PAUSED && prev === YT_PLAYER_STATE.PLAYING) {
           broadcastPlaybackState('pause');
@@ -502,20 +770,51 @@ async function initPlayers() {
       }
       prevActivePlayerState.value = event.data;
 
-      if (event.data === YT_PLAYER_STATE.ENDED && !swapping.value) {
+      if (event.data === YT_PLAYER_STATE.ENDED && !swapping.value && isDisplayed) {
         void handleEndedFallback();
       }
       if (event.data === YT_PLAYER_STATE.PLAYING) {
-        autoplayBlocked.value = false;
-        refreshVisiblePlayer(slot);
+        refreshPlayerSize(slot);
+        if (isDisplayed) {
+          autoplayBlocked.value = false;
+          markVideoFrameVisible(slot);
+        } else {
+          reconcileDisplaySlotForTrack();
+        }
+        if (props.djMode && pendingDjUnmute.value && isDisplayed) {
+          try {
+            slotPlayer(slot)?.unMute();
+            slotPlayer(slot)?.setVolume?.(100);
+          } catch {
+            /* ignore */
+          }
+          pendingDjUnmute.value = false;
+        }
+        if (isDisplayed) updateProgress();
+      }
+      if (event.data === YT_PLAYER_STATE.BUFFERING && isDisplayed) {
+        refreshPlayerSize(slot);
+        markVideoFrameVisible(slot);
         updateProgress();
       }
-      if (event.data === YT_PLAYER_STATE.UNSTARTED) {
+      if (event.data === YT_PLAYER_STATE.BUFFERING && !isDisplayed && !isSlotHoldingNextPrefetch(slot)) {
+        reconcileDisplaySlotForTrack();
+      }
+      if (event.data === YT_PLAYER_STATE.UNSTARTED && isDisplayed) {
         autoplayBlocked.value = true;
+        if (props.djMode && slot === displaySlot.value) {
+          try {
+            pendingDjUnmute.value = true;
+            slotPlayer(slot)?.mute();
+            slotPlayer(slot)?.playVideo();
+          } catch {
+            /* ignore */
+          }
+        }
       }
     },
     onError: (event: { data: number }) => {
-      if (slot !== activeSlot.value || !props.currentTrack || resolvingBlocked.value) return;
+      if (slot !== displaySlot.value || !props.currentTrack || resolvingBlocked.value) return;
       const code = event.data ?? -1;
       if (isEmbedBlockedError(code)) {
         void handleEmbedBlocked(props.currentTrack, code);
@@ -527,34 +826,63 @@ async function initPlayers() {
   });
 
   playerA.value = new window.YT.Player(elementIds.a, {
-    width: '100%',
-    height: '100%',
+    width: getPlayerAreaSize().w,
+    height: getPlayerAreaSize().h,
     playerVars: baseVars(),
     events: makeHandlers('a'),
   });
 
   playerB.value = new window.YT.Player(elementIds.b, {
-    width: '100%',
-    height: '100%',
+    width: getPlayerAreaSize().w,
+    height: getPlayerAreaSize().h,
     playerVars: baseVars(),
     events: makeHandlers('b'),
   });
+
+  await nextTick();
+  refreshBothPlayerSizes();
 }
 
 function bothReady() {
   return ready.value.a && ready.value.b;
 }
 
-function maybeStart() {
-  if (!bothReady() || !props.currentTrack) return;
+async function maybeStart() {
+  if (!bothReady() || !props.currentTrack || startingCurrentTrack) return;
+  startingCurrentTrack = true;
   swappedTrackId.value = null;
   pauseAfterLoadSlot.value = null;
-  activateTrack(props.currentTrack);
+  await nextTick();
+  await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+  refreshBothPlayerSizes();
+  try {
+    await activateTrack(props.currentTrack);
+    reconcileDisplaySlotForTrack();
+    refreshPlayerSize(displaySlot.value);
+    setTimeout(() => refreshPlayerSize(displaySlot.value), 250);
+  } finally {
+    startingCurrentTrack = false;
+  }
   void prefetchNextTrack(props.nextTrack);
   startTick();
 }
 
-/** Carga real del video (no cue) en un slot. */
+/** Precarga sin autoplay (cue) en el slot oculto. */
+function prefetchIntoSlot(slot: Slot, youtubeId: string) {
+  const player = slotPlayer(slot);
+  if (!player) return;
+  if (getVideoId(slot) === youtubeId && loadedIds.value[slot] === youtubeId) return;
+  try {
+    player.cueVideoById(youtubeId, 0);
+    loadedIds.value[slot] = youtubeId;
+    preloadedReady.value[slot] = youtubeId;
+    refreshPlayerSize(slot);
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Carga y reproduce en un slot. */
 function loadIntoSlot(slot: Slot, youtubeId: string) {
   const player = slotPlayer(slot);
   if (!player) return;
@@ -563,6 +891,7 @@ function loadIntoSlot(slot: Slot, youtubeId: string) {
     player.loadVideoById(youtubeId, 0);
     loadedIds.value[slot] = youtubeId;
     preloadedReady.value[slot] = '';
+    refreshPlayerSize(slot);
   } catch {
     /* ignore */
   }
@@ -580,13 +909,15 @@ async function prefetchNextTrack(track: YoutubePlayerTrack | null) {
 
     const youtubeId = result.youtubeId;
     const slot = inactiveSlot();
+    if (slot === displaySlot.value) return;
     if (isSlotReadyForVideo(slot, youtubeId)) return;
     if (loadedIds.value[slot] === youtubeId && pauseAfterLoadSlot.value === slot) return;
 
     try {
       slotPlayer(slot)?.mute();
-      loadIntoSlot(slot, youtubeId);
-      pauseAfterLoadSlot.value = slot;
+      prefetchIntoSlot(slot, youtubeId);
+      pauseAfterLoadSlot.value = null;
+      keepPrefetchSlotHidden(slot);
     } catch {
       /* ignore */
     }
@@ -606,10 +937,11 @@ function prebufferNext(track: YoutubePlayerTrack) {
 
 function findSlotWithVideo(youtubeId: string, preferInactive = false): Slot | null {
   const order: Slot[] = preferInactive
-    ? [inactiveSlot(), activeSlot.value]
-    : [activeSlot.value, inactiveSlot()];
+    ? [inactiveSlot(), displaySlot.value]
+    : [displaySlot.value, inactiveSlot()];
 
   for (const slot of order) {
+    if (getVideoId(slot) === youtubeId) return slot;
     if (slotHasLoadedVideo(slot, youtubeId)) return slot;
   }
   return null;
@@ -630,10 +962,16 @@ function playSlot(slot: Slot, track: YoutubePlayerTrack, options: { restart?: bo
   const restart = options.restart !== false;
   const onAir = getVideoId(slot);
   const hasVideo = onAir === track.youtubeId && loadedIds.value[slot] === track.youtubeId;
+  const useMutedAutoplay = props.djMode;
 
   try {
-    player.unMute();
-    player.setVolume?.(100);
+    if (useMutedAutoplay) {
+      player.mute();
+      pendingDjUnmute.value = true;
+    } else {
+      player.unMute();
+      player.setVolume?.(100);
+    }
 
     if (hasVideo) {
       if (restart) {
@@ -663,6 +1001,7 @@ function playSlot(slot: Slot, track: YoutubePlayerTrack, options: { restart?: bo
     }
     preloadedReady.value[slot] = '';
     pauseAfterLoadSlot.value = null;
+    refreshPlayerSize(slot);
   } catch {
     /* ignore */
   }
@@ -674,6 +1013,8 @@ async function ensurePlaying(
   options: { restart?: boolean } = {},
 ): Promise<void> {
   playSlot(slot, track, options);
+
+  refreshPlayerSize(slot);
 
   const ok = await waitForPlayerState(
     slot,
@@ -693,18 +1034,30 @@ async function ensurePlaying(
 }
 
 async function revealActiveSlot(slot: Slot) {
-  await nextTick();
-  refreshVisiblePlayer(slot);
-  try {
-    const player = slotPlayer(slot);
-    player?.unMute();
-    player?.setVolume?.(100);
-    player?.playVideo();
-  } catch {
-    /* ignore */
-  }
-  requestAnimationFrame(() => refreshVisiblePlayer(slot));
-  setTimeout(() => refreshVisiblePlayer(slot), 120);
+  await showDisplaySlot(slot);
+}
+
+function whenReady(timeoutMs = 15_000): Promise<boolean> {
+  if (bothReady()) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    const poll = () => {
+      if (destroyed) {
+        resolve(false);
+        return;
+      }
+      if (bothReady()) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() >= deadline) {
+        resolve(false);
+        return;
+      }
+      setTimeout(poll, 80);
+    };
+    poll();
+  });
 }
 
 async function preparePlaybackTrack(
@@ -805,9 +1158,12 @@ async function activateTrack(track: YoutubePlayerTrack) {
 
   const prepared = await preparePlaybackTrack(track);
   if (!prepared) {
-    if (!props.syncToBackend) {
-      if (props.nextTrack) await skipToNext(true);
-      else await finishCurrentTrack(true);
+    if (props.syncToBackend) {
+      emit('playback-unavailable', track);
+    } else if (props.nextTrack) {
+      await skipToNext(true);
+    } else {
+      await finishCurrentTrack(true);
     }
     return;
   }
@@ -821,55 +1177,55 @@ async function swapToPreparedTrack(
 ): Promise<boolean> {
   const stopOldSlot = options.stopOldSlot !== false;
   const youtubeId = prepared.youtubeId;
-  const oldSlot = activeSlot.value;
+  const oldDisplaySlot = displaySlot.value;
+  const oldActiveSlot = activeSlot.value;
 
-  let targetSlot = findSlotWithVideo(youtubeId, true);
-  if (!targetSlot) {
-    targetSlot = inactiveSlot();
-  }
+  const preloaded = findSlotWithVideo(youtubeId, true);
+  let targetSlot =
+    preloaded && !isSlotHoldingNextPrefetch(preloaded, youtubeId)
+      ? preloaded
+      : pickTargetSlot(youtubeId);
 
   releasePrefetchHold(targetSlot);
   pauseAfterLoadSlot.value = null;
+  preloadedReady.value[targetSlot] = '';
 
   swapping.value = true;
+  if (!slotShowsVideo(oldDisplaySlot)) {
+    markVideoFrameHidden();
+  }
   try {
-    const preloaded = findSlotWithVideo(youtubeId, true);
-    const resumePreload = preloaded != null && preloaded !== oldSlot;
+    const resumePreload = preloaded != null && targetSlot === preloaded && targetSlot !== oldDisplaySlot;
+
+    // Mostrar el slot destino antes de esperar frames (el oculto no pinta bien en YouTube).
+    if (targetSlot !== oldDisplaySlot) {
+      await showDisplaySlot(targetSlot);
+    }
 
     await ensurePlaying(targetSlot, prepared, { restart: !resumePreload });
 
-    let playing = await waitForPlayerState(
-      targetSlot,
-      [YT_PLAYER_STATE.PLAYING, YT_PLAYER_STATE.BUFFERING],
-      PLAY_WAIT_MS,
-    );
-    if (!playing) {
+    let ready = await waitForVisibleFrame(targetSlot, youtubeId, PLAY_WAIT_MS);
+    if (!ready) {
       await ensurePlaying(targetSlot, prepared, { restart: true });
-      playing = await waitForPlayerState(
-        targetSlot,
-        [YT_PLAYER_STATE.PLAYING, YT_PLAYER_STATE.BUFFERING],
-        PLAY_WAIT_MS,
-      );
+      ready = await waitForVisibleFrame(targetSlot, youtubeId, PLAY_WAIT_MS);
     }
 
-    if (getVideoId(targetSlot) !== youtubeId) {
-      await ensurePlaying(targetSlot, prepared, { restart: true });
-      await waitForPlayerState(
-        targetSlot,
-        [YT_PLAYER_STATE.PLAYING, YT_PLAYER_STATE.BUFFERING],
-        PLAY_WAIT_MS,
-      );
+    if (!ready) {
+      return false;
     }
 
-    activeSlot.value = targetSlot;
+    if (targetSlot === oldDisplaySlot) {
+      await showDisplaySlot(targetSlot);
+    }
+
     syncPlayerStateFromSlot(targetSlot);
-    await revealActiveSlot(targetSlot);
+    markVideoFrameVisible(targetSlot);
 
-    if (stopOldSlot && oldSlot !== targetSlot) {
+    if (stopOldSlot && oldActiveSlot !== targetSlot) {
       try {
-        slotPlayer(oldSlot)?.stopVideo();
-        loadedIds.value[oldSlot] = '';
-        preloadedReady.value[oldSlot] = '';
+        slotPlayer(oldActiveSlot)?.stopVideo();
+        loadedIds.value[oldActiveSlot] = '';
+        preloadedReady.value[oldActiveSlot] = '';
       } catch {
         /* ignore */
       }
@@ -887,11 +1243,12 @@ async function swapToPreparedTrack(
 }
 async function activateTrackInner(track: YoutubePlayerTrack) {
   const sameMeta =
-    activeTrackId.value === track.id && slotHasLoadedVideo(activeSlot.value, track.youtubeId);
+    activeTrackId.value === track.id && slotHasLoadedVideo(displaySlot.value, track.youtubeId);
 
   if (sameMeta && isTrackActiveOnPlayer(track)) {
-    syncPlayerStateFromSlot(activeSlot.value);
+    syncPlayerStateFromSlot(displaySlot.value);
     autoplayBlocked.value = false;
+    markVideoFrameVisible(displaySlot.value);
     updateProgress();
     emit('playing', track);
     void prefetchNextTrack(props.nextTrack);
@@ -902,6 +1259,9 @@ async function activateTrackInner(track: YoutubePlayerTrack) {
   if (activeTrackId.value !== track.id) {
     activeTrackId.value = null;
     swappedTrackId.value = null;
+    if (!slotShowsVideo(displaySlot.value)) {
+      markVideoFrameHidden();
+    }
   }
   for (const slot of ['a', 'b'] as Slot[]) {
     if (loadedIds.value[slot] === track.youtubeId && !slotHasLoadedVideo(slot, track.youtubeId)) {
@@ -939,6 +1299,12 @@ async function performEarlySwap(options: { emitSync?: boolean } = {}) {
 
   await swapToPreparedTrack(preparedNext);
 
+  if (activeTrackId.value !== preparedNext.id) {
+    swappedTrackId.value = null;
+    if (props.syncToBackend) emit('need-sync');
+    return;
+  }
+
   if (emitSync && props.syncToBackend) {
     emit('ended', finished);
     emit('need-sync');
@@ -955,7 +1321,7 @@ async function finishCurrentTrack(emitSync: boolean) {
   swappedTrackId.value = props.currentTrack.id;
 
   try {
-    slotPlayer(activeSlot.value)?.pauseVideo();
+    slotPlayer(displaySlot.value)?.pauseVideo();
   } catch {
     /* ignore */
   }
@@ -991,7 +1357,7 @@ async function skipToNext(fromError = false) {
 function checkTransitionWindow() {
   if (!bothReady() || swapping.value || !props.currentTrack) return;
 
-  const player = slotPlayer(activeSlot.value);
+  const player = slotPlayer(displaySlot.value);
   if (!player) return;
 
   updateProgress();
@@ -1034,20 +1400,33 @@ function stopTick() {
 function resumePlayback() {
   autoplayBlocked.value = false;
   const track = props.currentTrack;
-  if (track) void ensurePlaying(activeSlot.value, track);
+  if (!track) return;
+  if (props.djMode) pendingDjUnmute.value = true;
+  void ensurePlaying(displaySlot.value, track);
 }
 
 async function forceSkip() {
+  if (!props.nextTrack) {
+    await finishCurrentTrack(false);
+    return;
+  }
+  swappedTrackId.value = null;
+  pauseAfterLoadSlot.value = null;
   await performEarlySwap({ emitSync: false });
 }
 
-function switchToTrack(track: YoutubePlayerTrack) {
-  void applyTrackChange(track);
+function switchToTrack(track: YoutubePlayerTrack, options: { force?: boolean } = {}) {
+  void applyTrackChange(track, options);
+}
+
+async function applyTrack(track: YoutubePlayerTrack, options: { force?: boolean } = {}): Promise<void> {
+  await applyTrackChange(track, options);
 }
 
 let trackChangeToken = 0;
 
-async function applyTrackChange(track: YoutubePlayerTrack) {
+async function applyTrackChange(track: YoutubePlayerTrack, options: { force?: boolean } = {}) {
+  const force = options.force === true;
   const token = ++trackChangeToken;
 
   while (swapping.value && !destroyed) {
@@ -1061,24 +1440,81 @@ async function applyTrackChange(track: YoutubePlayerTrack) {
   }
   if (!bothReady() || token !== trackChangeToken) return;
 
+  if (!force && activeTrackId.value === track.id && isTrackActiveOnPlayer(track)) return;
+
   swappedTrackId.value = null;
+  pauseAfterLoadSlot.value = null;
+
+  if (force || activeTrackId.value !== track.id || !isVideoShowingTrack(track)) {
+    if (activeTrackId.value !== track.id) {
+      activeTrackId.value = null;
+    }
+    if (!isVideoShowingTrack(track)) {
+      pauseSlot(displaySlot.value);
+    }
+  }
+
+  const youtubeId = resolvedYoutubeId(track);
+
+  const preloadedSlot = findSlotWithVideo(youtubeId, true);
+  if (preloadedSlot && preloadedSlot !== displaySlot.value) {
+    let prepared: YoutubePlayerTrack | null = null;
+    const cached = getCachedTrackResolution(track.id);
+    if (cached?.ok) {
+      prepared = trackFromResolved(track, cached.youtubeId, cached.title);
+    } else {
+      prepared = await preparePlaybackTrack(track, { silent: true });
+    }
+    if (prepared) {
+      const ok = await swapToPreparedTrack(prepared);
+      if (ok) return;
+    }
+  }
+
+  if (
+    slotHasLoadedVideo(displaySlot.value, youtubeId) &&
+    isVideoShowingTrack(track, displaySlot.value)
+  ) {
+    const prepared = trackFromResolved(track, youtubeId, track.title);
+    const sameTrack = activeTrackId.value === track.id;
+    activeTrackId.value = track.id;
+    await ensurePlaying(displaySlot.value, prepared, { restart: !sameTrack });
+    markVideoFrameVisible(displaySlot.value);
+    updateProgress();
+    emit('playing', prepared);
+    void prefetchNextTrack(props.nextTrack);
+    return;
+  }
+
   await activateTrack(track);
 }
 
-defineExpose({ forceSkip, resumePlayback, togglePlayPause, switchToTrack, isPlayingTrack });
+function refreshLayout() {
+  refreshBothPlayerSizes();
+}
+
+defineExpose({
+  forceSkip,
+  resumePlayback,
+  togglePlayPause,
+  switchToTrack,
+  applyTrack,
+  isPlayingTrack,
+  whenReady,
+  refreshLayout,
+});
 
 watch(
   () => `${props.currentTrack?.id ?? ''}:${props.currentTrack?.youtubeId ?? ''}`,
   (key, prev) => {
     if (!props.currentTrack?.id || key === prev) return;
-    clearTrackResolution(props.currentTrack.id);
     if (isTrackActiveOnPlayer(props.currentTrack)) {
       swappedTrackId.value = null;
       return;
     }
+    clearTrackResolution(props.currentTrack.id);
     swappedTrackId.value = null;
-    activeTrackId.value = null;
-    void applyTrackChange(props.currentTrack);
+    void applyTrackChange(props.currentTrack, { force: true });
   },
 );
 
@@ -1090,15 +1526,27 @@ watch(
   },
 );
 
+watch(displaySlot, (slot) => {
+  void nextTick(() => refreshPlayerSize(slot));
+});
+
 onMounted(() => {
   void initPlayers();
   if (props.businessId && props.syncPlayback) {
     unregPlaybackSync = onPlaybackSync((cmd) => applyRemotePlayback(cmd));
   }
+  if (typeof ResizeObserver !== 'undefined' && rootEl.value) {
+    resizeObserver = new ResizeObserver(() => {
+      refreshBothPlayerSizes();
+    });
+    resizeObserver.observe(rootEl.value);
+  }
 });
 
 onBeforeUnmount(() => {
   unregPlaybackSync?.();
+  resizeObserver?.disconnect();
+  resizeObserver = null;
   destroyed = true;
   stopTick();
   try {
@@ -1111,12 +1559,26 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-[id$='-a'] :deep(iframe),
-[id$='-b'] :deep(iframe) {
+.yt-slot-visible {
+  z-index: 2;
+  visibility: visible;
+  opacity: 1;
+}
+
+.yt-slot-hidden {
+  z-index: 0;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+:deep([id$='-a'] iframe),
+:deep([id$='-b'] iframe) {
   position: absolute;
-  inset: 0;
-  width: 100% !important;
-  height: 100% !important;
+  left: 0;
+  top: 0;
   border: none;
+  display: block;
+  max-width: none;
 }
 </style>

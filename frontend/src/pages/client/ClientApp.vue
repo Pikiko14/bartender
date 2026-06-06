@@ -435,7 +435,10 @@ const cartTotal = computed(() => cart.reduce((acc, l) => acc + l.item.price * l.
 const musicQuery = ref('');
 const youtubeResults = ref<YoutubeVideo[]>([]);
 const spotifyResults = ref<SpotifyTrack[]>([]);
-const isSpotifyMode = computed(() => business.value?.musicProvider === 'SPOTIFY');
+const musicProvider = ref<'YOUTUBE' | 'SPOTIFY' | null>(null);
+const isSpotifyMode = computed(
+  () => musicProvider.value === 'SPOTIFY' || business.value?.musicProvider === 'SPOTIFY',
+);
 const queue = reactive<MusicQueue>({ nowPlaying: null, queue: [] });
 const myPending = ref<MusicRequest[]>([]);
 
@@ -640,7 +643,7 @@ async function search() {
       spotifyResults.value = await publicSpotifyApi.search(business.value.slug, musicQuery.value);
     } else {
       spotifyResults.value = [];
-      youtubeResults.value = await publicApi.searchMusic(musicQuery.value);
+      youtubeResults.value = await publicApi.searchMusic(musicQuery.value, business.value.slug);
     }
   } catch (e) {
     toast.error(apiErrorMessage(e));
@@ -713,6 +716,13 @@ onMounted(async () => {
     menu.value = await publicApi.menu(businessSlug);
     if (customerRegistered.value) {
       await refreshTableData();
+    }
+
+    try {
+      const conn = await publicSpotifyApi.connection(businessSlug);
+      musicProvider.value = conn.musicProvider as 'YOUTUBE' | 'SPOTIFY';
+    } catch {
+      musicProvider.value = scan.business.musicProvider ?? 'YOUTUBE';
     }
 
     const q = await publicApi.publicQueue(businessSlug).catch(() => ({ nowPlaying: null, queue: [] }));

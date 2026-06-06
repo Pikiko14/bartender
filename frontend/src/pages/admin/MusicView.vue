@@ -331,13 +331,11 @@ watch(
 
 async function runSpotifyQueueAction(action: 'skip' | 'next') {
   if (action === 'skip' && music.nowPlaying) {
-    await music.skip();
-  } else if (music.queue.length) {
+    const playing = await music.skip();
+    if (!playing) toast.info('No hay más canciones en la cola.');
+  } else if (music.queue.length || music.nowPlaying) {
     const playing = await music.playNext();
     if (!playing) toast.info('No hay más canciones en la cola.');
-  } else if (action === 'skip') {
-    await spotifyApi.skip();
-    await music.fetchQueue();
   } else {
     toast.info('Aprueba canciones o añádelas a la cola antes de reproducir.');
     return;

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { join } from 'path';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import configuration from '@config/configuration';
@@ -29,6 +30,8 @@ import { UploadsModule } from '@infrastructure/uploads/uploads.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      // Monorepo: `.env` en la raíz; opcional override en `backend/.env`.
+      envFilePath: [join(process.cwd(), '.env'), join(process.cwd(), '..', '.env')],
       load: [configuration],
       validate: validateEnv,
     }),

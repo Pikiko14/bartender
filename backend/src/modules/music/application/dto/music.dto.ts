@@ -6,6 +6,12 @@ export class SearchMusicDto {
   @MinLength(1)
   @MaxLength(120)
   q!: string;
+
+  /** Si se indica, la búsqueda usa Spotify o YouTube según el proveedor del negocio. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  businessSlug?: string;
 }
 
 export class RequestSongDto {

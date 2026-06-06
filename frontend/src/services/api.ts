@@ -178,8 +178,10 @@ export const publicApi = {
     unwrap<Order[]>(http.get(`/public/orders/table-session/${sessionId}`)),
   tableBill: (sessionId: string) =>
     unwrap<TableBill>(http.get(`/public/orders/table-session/${sessionId}/bill`)),
-  searchMusic: (q: string) =>
-    unwrap<YoutubeVideo[]>(http.get('/public/music/search', { params: { q } })),
+  searchMusic: (q: string, businessSlug?: string) =>
+    unwrap<YoutubeVideo[]>(
+      http.get('/public/music/search', { params: { q, businessSlug: businessSlug || undefined } }),
+    ),
   musicEmbeddable: (videoId: string) =>
     unwrap<{ embeddable: boolean }>(http.get(`/public/music/videos/${videoId}/embeddable`)),
   musicAlternative: (title: string, artist?: string) =>
