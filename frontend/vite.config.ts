@@ -1,9 +1,16 @@
 import { fileURLToPath, URL } from 'node:url';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // Monorepo: variables VITE_* en la raíz (mismo `.env` que el backend).
+  const envDir = fileURLToPath(new URL('..', import.meta.url));
+  const env = loadEnv(mode, envDir, '');
+  const backendTarget = env.VITE_API_URL || 'http://localhost:3000';
+
+  return {
+  envDir,
   plugins: [
     vue(),
     VitePWA({
@@ -43,9 +50,15 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:3000',
+        target: backendTarget,
         changeOrigin: true,
+      },
+      '/socket.io': {
+        target: env.VITE_SOCKET_URL || backendTarget,
+        changeOrigin: true,
+        ws: true,
       },
     },
   },
+  };
 });

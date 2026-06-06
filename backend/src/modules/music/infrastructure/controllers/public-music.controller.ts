@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '@shared/decorators';
+import { MusicProvider } from '@shared/enums/music-provider.enum';
 import { GetBusinessUseCase } from '@modules/business/application/use-cases/get-business.use-case';
+import { SpotifyService } from '@modules/spotify/infrastructure/services/spotify.service';
 import {
   FindAlternativeDto,
   RequestSongDto,
@@ -21,6 +23,7 @@ import { YoutubeService } from '../services/youtube.service';
 export class PublicMusicController {
   constructor(
     private readonly youtube: YoutubeService,
+    private readonly spotify: SpotifyService,
     private readonly requestSong: RequestSongUseCase,
     private readonly voteSong: VoteSongUseCase,
     private readonly getQueue: GetQueueUseCase,
@@ -31,7 +34,13 @@ export class PublicMusicController {
 
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('search')
-  search(@Query() dto: SearchMusicDto) {
+  async search(@Query() dto: SearchMusicDto) {
+    if (dto.businessSlug) {
+      const business = await this.getBusiness.bySlug(dto.businessSlug);
+      if (business.musicProvider === MusicProvider.SPOTIFY) {
+        return this.spotify.search(business.id, dto.q);
+      }
+    }
     return this.youtube.search(dto.q);
   }
 

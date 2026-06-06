@@ -1,7 +1,6 @@
 import { io, type Socket } from 'socket.io-client';
 
-// En desarrollo se usa VITE_SOCKET_URL (p.ej. http://localhost:3000).
-// En producción (detrás de nginx) se deja vacío y se conecta al mismo origen.
+// Vacío = mismo origen (Vite proxya /socket.io → backend en dev).
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || window.location.origin;
 
 export const SocketEvents = {
@@ -40,12 +39,18 @@ class RealtimeClient {
   connect(): Socket {
     if (this.socket) return this.socket;
     this.socket = io(SOCKET_URL, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
     });
+
+    if (import.meta.env.DEV) {
+      this.socket.on('connect_error', (err) => {
+        console.warn('[socket] connect_error:', err.message, '→', SOCKET_URL);
+      });
+    }
 
     // Reune las rooms tras una reconexión automática.
     this.socket.on('connect', () => {

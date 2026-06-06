@@ -56,7 +56,13 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   await app.listen(port);
+  const mongoUri = config.get<string>('mongo.uri') ?? '';
+  const redisHost = config.get<string>('redis.host') ?? 'localhost';
+  const youtubeKey = config.get<string>('youtube.apiKey') ?? '';
   logger.log(`🍸 Bartender API escuchando en http://localhost:${port}/${apiPrefix}`);
+  logger.log(
+    `📋 Config: mongo=${mongoUri.replace(/\/\/.*@/, '//***@')} · redis=${redisHost} · youtube=${youtubeKey ? 'ok' : 'sin clave'}`,
+  );
 }
 
 void bootstrap();

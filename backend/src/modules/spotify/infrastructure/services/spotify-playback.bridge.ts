@@ -17,18 +17,16 @@ export class SpotifyPlaybackBridge {
     private readonly spotify: SpotifyService,
   ) {}
 
-  async onTrackStarted(
-    businessId: string,
-    track: MusicRequestView | null,
-    upcomingSpotifyIds: string[] = [],
-  ): Promise<void> {
+  async onTrackStarted(businessId: string, track: MusicRequestView | null): Promise<void> {
     if (!track || track.provider !== MusicProvider.SPOTIFY || !track.spotifyId) return;
 
     const business = await this.businesses.findById(businessId);
     if (!business || business.musicProvider !== MusicProvider.SPOTIFY) return;
 
-    const order = [track.spotifyId, ...upcomingSpotifyIds.filter((id) => id && id !== track.spotifyId)];
-    await this.spotify.syncPlaybackQueue(businessId, order);
+    const activeId = await this.spotify.getActiveTrackId(businessId);
+    if (activeId === track.spotifyId) return;
+
+    await this.spotify.playTrackNow(businessId, track.spotifyId);
   }
 
   async onPlaybackControl(

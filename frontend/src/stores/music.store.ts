@@ -3,6 +3,7 @@ import { musicApi, publicApi } from '@/services/api';
 import { realtime, SocketEvents, type PlaybackSyncPayload } from '@/socket/socket';
 import { dispatchPlaybackSync } from '@/shared/playback-sync';
 import { broadcastNowPlaying, broadcastQueueState } from '@/shared/music-sync-bus';
+import { notifyMusicPlaybackChanged } from '@/shared/music-playback-bus';
 import type { MusicQueue, MusicRequest } from '@/shared/types';
 
 let playbackRelayReady = false;
@@ -38,6 +39,7 @@ export const useMusicStore = defineStore('music', {
       this.nowPlaying = q.nowPlaying;
       this.queue = q.queue;
       this.pending = q.pending ?? [];
+      notifyMusicPlaybackChanged();
     },
     broadcastIfBound() {
       if (this.businessId) this.broadcastState(this.businessId);
@@ -60,6 +62,7 @@ export const useMusicStore = defineStore('music', {
         await this.fetchQueue();
         if (playing) this.nowPlaying = playing;
         this.broadcastIfBound();
+        notifyMusicPlaybackChanged();
         return playing;
       } catch (e) {
         await this.fetchQueue();
@@ -72,6 +75,7 @@ export const useMusicStore = defineStore('music', {
         await this.fetchQueue();
         if (playing) this.nowPlaying = playing;
         this.broadcastIfBound();
+        notifyMusicPlaybackChanged();
         return playing;
       } catch (e) {
         await this.fetchQueue();
@@ -97,6 +101,7 @@ export const useMusicStore = defineStore('music', {
         await this.fetchQueue();
         if (playing) this.nowPlaying = playing;
         this.broadcastIfBound();
+        notifyMusicPlaybackChanged();
         return playing;
       } catch (e) {
         await this.fetchQueue();
@@ -110,6 +115,7 @@ export const useMusicStore = defineStore('music', {
         await this.fetchPublicQueue(businessSlug);
         if (playing) this.nowPlaying = playing;
         this.broadcastIfBound();
+        notifyMusicPlaybackChanged();
         return playing;
       } catch (e) {
         await this.fetchPublicQueue(businessSlug).catch(() => undefined);
@@ -121,12 +127,14 @@ export const useMusicStore = defineStore('music', {
       const playing = await publicApi.publicPlayRequest(businessSlug, id);
       this.nowPlaying = playing;
       this.broadcastIfBound();
+      notifyMusicPlaybackChanged();
     },
 
     async syncPlaying(id: string) {
       const playing = await musicApi.syncPlaying(id);
       this.nowPlaying = playing;
       this.broadcastIfBound();
+      notifyMusicPlaybackChanged();
       return playing;
     },
 
@@ -134,14 +142,22 @@ export const useMusicStore = defineStore('music', {
       const playing = await publicApi.publicSyncPlaying(businessSlug, id);
       this.nowPlaying = playing;
       this.broadcastIfBound();
+      notifyMusicPlaybackChanged();
       return playing;
     },
 
     async skipPublic(businessSlug: string) {
-      const playing = await publicApi.publicSkip(businessSlug);
-      if (playing !== undefined) this.nowPlaying = playing;
-      this.broadcastIfBound();
-      return playing;
+      try {
+        const playing = await publicApi.publicSkip(businessSlug);
+        await this.fetchPublicQueue(businessSlug);
+        if (playing) this.nowPlaying = playing;
+        this.broadcastIfBound();
+        notifyMusicPlaybackChanged();
+        return playing;
+      } catch (e) {
+        await this.fetchPublicQueue(businessSlug).catch(() => undefined);
+        throw e;
+      }
     },
 
     async updatePlaybackSource(
@@ -208,6 +224,7 @@ export const useMusicStore = defineStore('music', {
       realtime.on<MusicRequest | null>(SocketEvents.MUSIC_PLAYING, (req) => {
         this.nowPlaying = req;
         this.broadcastIfBound();
+        notifyMusicPlaybackChanged();
       });
       realtime.on(SocketEvents.MUSIC_REQUESTED, () => {
         void this.fetchQueue();
@@ -219,6 +236,7 @@ export const useMusicStore = defineStore('music', {
 
     notifyPlayback(businessId: string) {
       this.broadcastState(businessId);
+      notifyMusicPlaybackChanged();
     },
   },
 });
