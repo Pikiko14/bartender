@@ -25,6 +25,13 @@
 
     <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       <div v-for="t in tables.tables" :key="t.id" class="card p-4 text-center">
+        <RouterLink
+          v-if="billForTable(t.id)"
+          :to="{path: '/app/orders', query: {order: billForTable(t.id)?.tableSession?.id}}"
+          class="text-neon-cyan hover:underline"
+        >
+          ↗ Ver pedido
+        </RouterLink>
         <img
           v-if="qrImages[t.id]"
           :src="qrImages[t.id]"

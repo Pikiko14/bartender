@@ -178,7 +178,23 @@ export class SpotifyService {
   }
 
   async play(businessId: string, trackId: string): Promise<void> {
-    await this.syncPlaybackQueue(businessId, [trackId]);
+    await this.playTrackNow(businessId, trackId);
+  }
+
+  /** Reproduce una sola pista (reemplaza lo que suena; no re-encola toda la cola Bartender). */
+  async playTrackNow(businessId: string, trackId: string): Promise<void> {
+    const business = await this.requireSpotifyDevice(businessId);
+    const { token } = await this.tokens.getValidAccessToken(businessId);
+    const deviceId = business.spotifyDeviceId!;
+
+    await this.apiRequest(
+      businessId,
+      'PUT',
+      `/me/player/play?device_id=${encodeURIComponent(deviceId)}`,
+      token,
+      { uris: [`spotify:track:${trackId}`] },
+    );
+    this.logger.log(`[Spotify] playTrackNow business=${businessId} track=${trackId}`);
   }
 
   /** Añade una pista al final de la cola del reproductor Spotify activo. */
@@ -279,7 +295,10 @@ export class SpotifyService {
   private async fetchPlayerQueueTrackIds(businessId: string, token: string): Promise<string[]> {
     const url = `${this.apiBase}/me/player/queue`;
     try {
-      const { data, status } = await axios.request<{ queue?: Array<{ id?: string }> }>({
+      const { data, status } = await axios.request<{
+        currently_playing?: { id?: string };
+        queue?: Array<{ id?: string }>;
+      }>({
         method: 'GET',
         url,
         headers: { Authorization: `Bearer ${token}` },
@@ -291,9 +310,14 @@ export class SpotifyService {
       }
       if (status === 404 || status === 204) return [];
       if (status >= 400) return [];
-      return (data.queue ?? [])
-        .map((t) => this.normalizeTrackId(t.id))
-        .filter((id): id is string => !!id);
+      const ids: string[] = [];
+      const push = (id: string | null) => {
+        if (id && !ids.includes(id)) ids.push(id);
+      };
+      for (const t of data.queue ?? []) {
+        push(this.normalizeTrackId(t.id));
+      }
+      return ids;
     } catch {
       return [];
     }

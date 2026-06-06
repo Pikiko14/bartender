@@ -201,7 +201,7 @@ function handlePlayerState(state: unknown) {
 
   lastTrackUri = trackUri;
 
-  if (!isPublic.value && auth.user?.businessId && spotifyId) {
+  if (!isPublic.value && auth.user?.businessId && spotifyId && canAutoAdvance) {
     void music.trySyncFromSpotifyTrack(spotifyId);
   }
 }

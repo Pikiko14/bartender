@@ -125,14 +125,8 @@ export class PlaybackUseCase {
     const p = playable.toPrimitives();
 
     if (p.provider === MusicProvider.SPOTIFY) {
-      const approved = await this.requests.findByBusinessAndStatuses(businessId, [
-        MusicRequestStatus.APPROVED,
-      ]);
-      const upcoming = approved
-        .filter((row) => row.id !== playable.id && row.spotifyId)
-        .map((row) => row.spotifyId!);
       const preview = presentMusicRequest(playable);
-      await this.spotifyPlayback.onTrackStarted(businessId, preview, upcoming);
+      await this.spotifyPlayback.onTrackStarted(businessId, preview);
     }
 
     playable.markPlaying();

@@ -1,9 +1,15 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { setDocumentTitle, titleFromRoute } from '@/shared/document-title';
+import type { RouteLocationNormalized } from 'vue-router';
 
 const routes: RouteRecordRaw[] = [
-  { path: '/', name: 'home', component: () => import('@/pages/HomeView.vue'), meta: { title: 'Inicio' } },
+  {
+    path: '/',
+    name: 'home',
+    component: () => import('@/pages/HomeView.vue'),
+    meta: { title: 'Inicio' },
+  },
   {
     path: '/pricing',
     name: 'pricing',
@@ -44,7 +50,7 @@ const routes: RouteRecordRaw[] = [
         path: 'orders',
         name: 'admin-orders',
         component: () => import('@/pages/admin/OrdersView.vue'),
-        meta: { title: 'Pedidos' },
+        meta: { title: 'Pedidos', preserveScrollOnQueryChange: true },
       },
       {
         path: 'menu',
@@ -147,10 +153,21 @@ const routes: RouteRecordRaw[] = [
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ];
 
+function scrollBehavior(
+  to: RouteLocationNormalized,
+  from: RouteLocationNormalized,
+): ScrollToOptions | false {
+  if (to.meta.preserveScrollOnQueryChange && to.path === from.path) {
+    return false;
+  }
+
+  return { top: 0 };
+}
+
 export const router = createRouter({
   history: createWebHistory(),
   routes,
-  scrollBehavior: () => ({ top: 0 }),
+  scrollBehavior,
 });
 
 router.beforeEach((to) => {

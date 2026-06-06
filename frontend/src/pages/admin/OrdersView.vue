@@ -49,6 +49,7 @@
               <tr
                 class="border-t border-ink-700 hover:bg-ink-900/50"
                 :class="expandedKey === billKey(bill) ? 'bg-ink-900/60' : ''"
+                :id="billKey(bill)"
               >
                 <td class="px-3 py-3">
                   <button
@@ -321,7 +322,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router'
 import OrderCard from '@/components/OrderCard.vue';
 import { customersApi, ordersApi } from '@/services/api';
 import { useOrdersStore } from '@/stores/orders.store';
@@ -338,6 +340,9 @@ type MainView = 'curso' | 'historial' | 'todos';
 const orders = useOrdersStore();
 const auth = useAuthStore();
 const toast = useToast();
+const route = useRoute()
+const router = useRouter()
+
 
 const view = ref<MainView>('curso');
 const openBills = ref<TableBill[]>([]);
@@ -345,7 +350,17 @@ const closedBills = ref<TableBill[]>([]);
 const loadingBills = ref(false);
 const loadingHistory = ref(false);
 const closingKey = ref<string | null>(null);
-const expandedKey = ref<string | null>(null);
+const expandedKey = computed({
+  get: () => route.query.order ?? null,
+  set: (order) => {
+    router.replace({
+      query: {
+        ...route.query,
+        order
+      }
+    })
+  }
+});
 const active = ref<OrderStatus | undefined>(undefined);
 
 const customerPanel = ref<TableBill | null>(null);
@@ -401,6 +416,7 @@ function linesSummary(bill: TableBill) {
 
 function toggleExpand(bill: TableBill) {
   const key = billKey(bill);
+  router.replace({query: {...route.query, order: key}});
   expandedKey.value = expandedKey.value === key ? null : key;
 }
 
@@ -583,6 +599,22 @@ onMounted(async () => {
   }
   await refreshAll();
 });
+
+watch(
+  () => openBills.value.length,
+  async (count) => {
+    const order = route.query.order as string;
+
+    if (!count || !order) return
+
+    document.getElementById(order)?.scrollIntoView({behavior: 'smooth'});
+  },
+  {
+    once: true,
+    flush: 'post',
+
+  }
+)
 
 onBeforeUnmount(() => {
   realtime.off(SocketEvents.TABLE_SESSION_CLOSED, onTableClosed);

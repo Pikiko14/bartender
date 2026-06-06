@@ -1,3 +1,5 @@
+import { existsSync } from 'fs';
+
 export interface AppConfig {
   env: string;
   name: string;
@@ -79,6 +81,30 @@ function stripEnvQuotes(value: string | undefined): string | undefined {
   return trimmed;
 }
 
+/** true dentro de un contenedor Docker (/.dockerenv). */
+function isRunningInDocker(): boolean {
+  try {
+    return existsSync('/.dockerenv');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * En `.env` de docker-compose los hosts son `mongo` / `redis`.
+ * Fuera del contenedor (npm run dev:backend en Windows/Mac) se mapean a localhost.
+ */
+function resolveDockerServiceHost(host: string): string {
+  if (isRunningInDocker() || process.env.USE_DOCKER_HOSTS === 'true') return host;
+  if (host === 'mongo' || host === 'redis') return 'localhost';
+  return host;
+}
+
+function resolveDockerServiceMongoUri(uri: string): string {
+  if (isRunningInDocker() || process.env.USE_DOCKER_HOSTS === 'true') return uri;
+  return uri.replace(/mongodb:\/\/mongo(?=[:/])/i, 'mongodb://localhost');
+}
+
 /** Upstash: REST URL + token → conexión TCP (mismo token como password). */
 function upstashRestToRedisUrl(restUrl: string, token: string): string {
   const host = restUrl.replace(/^https?:\/\//i, '').replace(/\/$/, '');
@@ -109,7 +135,7 @@ function buildRedisConfig(): RedisConfig {
 
   return {
     url,
-    host: host ?? 'localhost',
+    host: resolveDockerServiceHost(host ?? 'localhost'),
     port: parseInt(process.env.REDIS_PORT ?? process.env.REDISPORT ?? '6379', 10),
     password: process.env.REDIS_PASSWORD ?? process.env.REDISPASSWORD ?? undefined,
   };
@@ -124,7 +150,9 @@ export default (): Configuration => ({
     apiPrefix: process.env.API_PREFIX ?? 'api',
   },
   mongo: {
-    uri: process.env.MONGO_URI ?? 'mongodb://localhost:27017/bartender',
+    uri: resolveDockerServiceMongoUri(
+      process.env.MONGO_URI ?? 'mongodb://localhost:27017/bartender',
+    ),
   },
   redis: buildRedisConfig(),
   jwt: {
