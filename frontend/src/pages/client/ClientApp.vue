@@ -642,8 +642,10 @@ async function search() {
       youtubeResults.value = [];
       spotifyResults.value = await publicSpotifyApi.search(business.value.slug, musicQuery.value);
     } else {
+      const slug = business.value?.slug;
+      if (!slug) return;
       spotifyResults.value = [];
-      youtubeResults.value = await publicApi.searchMusic(musicQuery.value, business.value.slug);
+      youtubeResults.value = await publicApi.searchMusic(musicQuery.value, slug);
     }
   } catch (e) {
     toast.error(apiErrorMessage(e));
